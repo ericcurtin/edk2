@@ -3,7 +3,7 @@
  * Copyright (c) 2009, Google Inc.
  * All rights reserved.
  *
- * Copyright (c) 2009-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2019, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -40,6 +40,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
 #include <Uefi.h>
+#include "EarlyEthernet.h"
 
 #define BOOT_BASE_BAND " androidboot.baseband="
 #define BATT_MIN_VOLT 3200
@@ -79,6 +80,9 @@ typedef struct UpdateCmdLineParamList {
   CHAR8 *DtboIdxStr;
   CHAR8 *LEVerityCmdLine;
   CHAR8 *CvmSystemPtnCmdLine;
+  CHAR8 *EarlyIPv4CmdLine;
+  CHAR8 *EarlyIPv6CmdLine;
+  CHAR8 *EarlyEthMacCmdLine;
 } UpdateCmdLineParamList;
 
 EFI_STATUS

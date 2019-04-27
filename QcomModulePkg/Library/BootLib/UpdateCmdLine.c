@@ -47,6 +47,7 @@
 #include "UpdateCmdLine.h"
 #include "Recovery.h"
 #include "LECmdLine.h"
+#include "EarlyEthernet.h"
 
 STATIC CONST CHAR8 *DynamicBootDeviceCmdLine =
                                       " androidboot.boot_devices=soc/";
@@ -64,6 +65,10 @@ STATIC CHAR8 *AndroidSlotSuffix = " androidboot.slot_suffix=";
 STATIC CHAR8 *RootCmdLine = " rootwait ro init=";
 STATIC CHAR8 *InitCmdline = INIT_BIN;
 STATIC CHAR8 *SkipRamFs = " skip_initramfs";
+
+CHAR8 IPv4AddrBufCmdLine[MAX_IP_ADDR_BUF];
+CHAR8 IPv6AddrBufCmdLine[MAX_IP_ADDR_BUF];
+CHAR8 MacEthAddrBufCmdLine[MAX_IP_ADDR_BUF];
 
 /* Display command line related structures */
 #define MAX_DISPLAY_CMD_LINE 256
@@ -502,6 +507,16 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     Src = Param->CvmSystemPtnCmdLine;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
+
+  if (EarlyEthEnabled ()) {
+    Src = Param->EarlyIPv4CmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+    Src = Param->EarlyIPv6CmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+    Src = Param->EarlyEthMacCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
   return EFI_SUCCESS;
 }
 
@@ -668,6 +683,15 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
                                  (CHAR8 *)"vm_system");
   }
 
+  if (EarlyEthEnabled ()) {
+    GetEarlyEthInfoFromPartition (IPv4AddrBufCmdLine,
+                                 IPv6AddrBufCmdLine,
+                                 MacEthAddrBufCmdLine);
+    CmdLineLen += AsciiStrLen (IPv4AddrBufCmdLine);
+    CmdLineLen += AsciiStrLen (IPv6AddrBufCmdLine);
+    CmdLineLen += AsciiStrLen (MacEthAddrBufCmdLine);
+  }
+
   Param.Recovery = Recovery;
   Param.MultiSlotBoot = MultiSlotBoot;
   Param.AlarmBoot = AlarmBoot;
@@ -697,6 +721,12 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   Param.DtboIdxStr = DtboIdxStr;
   Param.LEVerityCmdLine = LEVerityCmdLine;
   Param.CvmSystemPtnCmdLine = CvmSystemPtnCmdLine;
+
+  if (EarlyEthEnabled ()) {
+    Param.EarlyIPv4CmdLine = IPv4AddrBufCmdLine;
+    Param.EarlyIPv6CmdLine = IPv6AddrBufCmdLine;
+    Param.EarlyEthMacCmdLine = MacEthAddrBufCmdLine;
+  }
 
   Status = UpdateCmdLineParams (&Param, FinalCmdLine);
   if (Status != EFI_SUCCESS) {
