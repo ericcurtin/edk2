@@ -100,3 +100,4 @@
 [FixedPcd]
   gQcomTokenSpaceGuid.EnableMdtpSupport
   gQcomTokenSpaceGuid.EnableBatteryVoltageCheck
+  gQcomTokenSpaceGuid.EnableDisplayMenu

@@ -2571,9 +2571,9 @@ SetDeviceUnlock (UINT32 Type, BOOLEAN State)
     return;
   }
 
-
   if (GetAVBVersion () != AVB_LE &&
-      is_display_supported ()) {
+      is_display_supported () &&
+      FixedPcdGetBool (EnableDisplayMenu)) {
     Status = DisplayUnlockMenu (Type, State);
     if (Status != EFI_SUCCESS) {
       FastbootFail ("Command not support: the display is not enabled");
