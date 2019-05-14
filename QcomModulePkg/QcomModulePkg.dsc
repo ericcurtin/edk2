@@ -46,6 +46,12 @@
   SKUID_IDENTIFIER               = DEFAULT
   FLASH_DEFINITION               = QcomModulePkg/QcomModulePkg.fdf
 
+!if $(TARGET_BOARD_TYPE_AUTO) == 1
+	DEFINE ENABLE_DISPLAY_MENU = FALSE
+!else
+	DEFINE ENABLE_DISPLAY_MENU = TRUE
+!endif
+
 [LibraryClasses.common]
   DebugLib|MdePkg/Library/UefiDebugLibConOut/UefiDebugLibConOut.inf
   BaseStackCheckLib|MdePkg/Library/BaseStackCheckLib/BaseStackCheckLib.inf
@@ -115,6 +121,9 @@
   !if $(AB_RETRYCOUNT_DISABLE)
       GCC:*_*_*_CC_FLAGS = -DAB_RETRYCOUNT_DISABLE
   !endif
+  !if $(TARGET_BOARD_TYPE_AUTO) == 1
+      GCC:*_*_*_CC_FLAGS = -DTARGET_BOARD_TYPE_AUTO
+  !endif
   !if $(VERITY_LE)
       GCC:*_*_*_CC_FLAGS = -DVERITY_LE
   !endif
@@ -154,6 +163,7 @@
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2f
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000042
   gEfiMdePkgTokenSpaceGuid.PcdReportStatusCodePropertyMask|0x06
+  gQcomTokenSpaceGuid.EnableDisplayMenu|$(ENABLE_DISPLAY_MENU)
 
 ################################################################################
 #
