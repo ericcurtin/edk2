@@ -2594,6 +2594,8 @@ SetDeviceUnlock (UINT32 Type, BOOLEAN State)
          return;
     }
     FastbootOkay ("");
+    if(GetAVBVersion () != AVB_LE && !FixedPcdGetBool (EnableDisplayMenu))
+      RebootDevice(RECOVERY_MODE);
   }
 }
 #endif
