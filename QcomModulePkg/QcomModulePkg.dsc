@@ -159,8 +159,11 @@
 # CLEAR_MEMORY_ENABLED       0x08
 # ASSERT_BREAKPOINT_ENABLED  0x10
 # ASSERT_DEADLOOP_ENABLED    0x20
-
-  gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2f
+  !if $(USER_BUILD_VARIANT) == 1
+	gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0
+  !elseif $(USER_BUILD_VARIANT) == 0
+	gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2f
+  !endif
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000042
   gEfiMdePkgTokenSpaceGuid.PcdReportStatusCodePropertyMask|0x06
   gQcomTokenSpaceGuid.EnableDisplayMenu|$(ENABLE_DISPLAY_MENU)
