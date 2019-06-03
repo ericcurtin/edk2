@@ -334,7 +334,6 @@ VOID PartitionDump (VOID)
   }
 }
 
-STATIC
 EFI_STATUS
 PartitionGetInfo (IN CHAR16 *PartitionName,
                   OUT EFI_BLOCK_IO_PROTOCOL **BlockIo,

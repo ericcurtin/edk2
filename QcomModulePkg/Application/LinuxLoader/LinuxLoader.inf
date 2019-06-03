@@ -22,6 +22,8 @@
 
 [Sources]
 	LinuxLoader.c
+	hibernation/HibernationImageLoader.c
+	hibernation/Jumptokernel.s
 
 [BuildOptions]
 	GCC:*_*_*_CC_FLAGS = $(LLVM_ENABLE_SAFESTACK) $(LLVM_SAFESTACK_USE_PTR) $(LLVM_SAFESTACK_COLORING)
