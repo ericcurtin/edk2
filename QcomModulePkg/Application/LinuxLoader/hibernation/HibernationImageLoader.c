@@ -442,6 +442,8 @@ static int read_swap_info_struct(void)
 {
 	struct swsusp_info *info;
 
+	BootStatsSetTimeStamp (BS_KERNEL_LOAD_START);
+
 	info = AllocatePages(1);
 	if (!info) {
 		printf("Memory alloc failed Line %d\n",__LINE__);
@@ -615,6 +617,7 @@ static int read_data_pages(unsigned long *kernel_pfn_indexes,
 			offset++;
 		}
 	}
+	BootStatsSetTimeStamp (BS_KERNEL_LOAD_DONE);
 
 	MBs = (nr_copy_pages*PAGE_SIZE)/(1024*1024);
 	MBPS = (MBs*1000)/disk_read_ms;
