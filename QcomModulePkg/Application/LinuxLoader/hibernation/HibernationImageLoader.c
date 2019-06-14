@@ -35,8 +35,9 @@
 #include <Library/StackCanary.h>
 #include "Hibernation.h"
 
+static struct addr_range reserve_range;
 static struct free_ranges free_range_buf[100];
-static int buf_index;
+static int free_range_max_index;
 static unsigned int nr_copy_pages;
 static unsigned int nr_meta_pages;
 static UINT64 bounce_base_addr = 0x140000000;
@@ -71,6 +72,54 @@ static void copyPage(unsigned long src_pfn, unsigned long dst_pfn)
 	unsigned long *dst = (unsigned long*)(dst_pfn << PAGE_SHIFT);
 
 	gBS->CopyMem (dst, src, PAGE_SIZE);
+}
+
+/*
+ * Preallocation is done for performance reason. We want to map memory
+ * as big as possible. So that UEFI can create bigger page table mappings.
+ * We have seen mapping single page is taking time in terms of few ms.
+ * But we cannot preallocate every free page, becasue that causes allocation
+ * failures for UEFI. Hence allocate most of the free pages but some(10MB)
+ * are kept unallocated for UEFI to use. If kernel has any destined pages in
+ * this region, that will be bounced.
+ */
+static void preallocate_free_ranges(void)
+{
+	int i = 0, ret;
+	int reservation_done = 0;
+	UINT64 alloc_addr, range_size;
+	UINT64 num_pages;
+
+	for (i = free_range_max_index ; i >= 0 ; i--) {
+		range_size = free_range_buf[i].end - free_range_buf[i].start;
+		if (!reservation_done && range_size > RESERVE_FREE_SIZE) {
+			/*
+			 * We have more buffer. Remove reserved buf and allocate
+			 * rest in the range.
+			 */
+			reservation_done = 1;
+			alloc_addr = free_range_buf[i].start + RESERVE_FREE_SIZE;
+			range_size -=  RESERVE_FREE_SIZE;
+			num_pages = range_size/PAGE_SIZE;
+			reserve_range.start = free_range_buf[i].start;
+			reserve_range.end = alloc_addr;
+		} else {
+			alloc_addr = free_range_buf[i].start;
+			num_pages = range_size/PAGE_SIZE;
+		}
+
+		ret = gBS->AllocatePages(AllocateAddress, EfiBootServicesData,
+				num_pages, &alloc_addr);
+		if(!ret)
+			printf("Fatal error alloc LINE %d\n", __LINE__);
+	}
+}
+
+static int is_reserved_addr(unsigned long addr)
+{
+	if (addr >= reserve_range.start && addr < reserve_range.end)
+		return 1;
+	return 0;
 }
 
 static int get_uefi_memory_map(void)
@@ -114,19 +163,11 @@ static int get_uefi_memory_map(void)
 	}
 	for (Index = 0; Index < MemMapSize / DescriptorSize; Index ++) {
 		if (MemMap->Type == EfiConventionalMemory) {
-			int ret;
-			free_range_buf[buf_index].start = MemMap->PhysicalStart;
-			free_range_buf[buf_index].end =  MemMap->PhysicalStart + MemMap->NumberOfPages * 4096;
-			/* TODO: Remove below address dependency */
-			if (MemMap->PhysicalStart != 0x14FAFB000) {
-				ret = gBS->AllocatePages(AllocateAddress, EfiBootServicesData,
-						MemMap->NumberOfPages, &MemMap->PhysicalStart);
-				if(ret)
-					printf("error alloc LINE %d\n", __LINE__);
-			}
-			DEBUG ((EFI_D_ERROR, "Free Range 0x%lx --- 0x%lx\n",free_range_buf[buf_index].start,
-			free_range_buf[buf_index].end));
-			buf_index++;
+			free_range_buf[free_range_max_index].start = MemMap->PhysicalStart;
+			free_range_buf[free_range_max_index].end =  MemMap->PhysicalStart + MemMap->NumberOfPages * PAGE_SIZE;
+			DEBUG ((EFI_D_ERROR, "Free Range 0x%lx --- 0x%lx\n",free_range_buf[free_range_max_index].start,
+			free_range_buf[free_range_max_index].end));
+			free_range_max_index++;
 		}
 		MemMap = (EFI_MEMORY_DESCRIPTOR *)((UINTN)MemMap + DescriptorSize);
 	}
@@ -186,7 +227,7 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages) {
 static int CheckFreeRanges (UINT64 target_addr)
 {
 	int i = 0;
-	while (i < buf_index) {
+	while (i < free_range_max_index) {
 		if (target_addr >= free_range_buf[i].start &&
 			target_addr < free_range_buf[i].end)
 		return 1;
@@ -203,9 +244,7 @@ static int copy_page_to_dst(unsigned long src_pfn, unsigned long dst_pfn, unsign
 	int ret = 1;
 	UINT64 target_addr = dst_pfn << PAGE_SHIFT;
 
-	if (CheckFreeRanges(target_addr)) {
-		if (target_addr > 0x14FAFB000 && target_addr < 0x150000000)
-			gBS->AllocatePages(AllocateAddress, EfiBootServicesData, 1, &target_addr);
+	if (CheckFreeRanges(target_addr) && !is_reserved_addr(target_addr)) {
 		copyPage(src_pfn, dst_pfn);
 		ret = 0;
 	} else
@@ -341,6 +380,11 @@ static int swsusp_read(void)
 	}
 
 	get_uefi_memory_map();
+	/*
+	 * No dynamic allocation beyond this point. If not honored it will
+	 * result in corruption of pages.
+	 */
+	preallocate_free_ranges();
 
 	pending_pfns = nr_copy_pages;
 	printf("Reading pages:     ");
