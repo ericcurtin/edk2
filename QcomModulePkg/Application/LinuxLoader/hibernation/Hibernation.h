@@ -25,7 +25,6 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-
 #if HIBERNATION_SUPPORT
 
 #define __aligned(x)	__attribute__((aligned(x)))
@@ -35,11 +34,12 @@
 #define PAGE_SHIFT	12
 #define PAGE_SIZE	(_AC(1, UL) << PAGE_SHIFT)
 #define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
-#define MAX_BOUNCE_PAGES        64000
+#define MAX_BOUNCE_PAGES        32768
 #define HIBERNATE_SIG           "S1SUSPEND"
 #define PFNS_PER_PAGE           512
 #define SWAP_INFO_OFFSET        2
 #define __NEW_UTS_LEN 64
+#define NUM_FREE_BOOK_PAGES 64
 
 /* Return True if integer overflow will occur */
 #define CHECK_ADD64(a, b) ((MAX_UINT64 - b < a) ? TRUE : FALSE)
@@ -103,8 +103,18 @@ struct free_ranges {
 };
 
 struct bounce_pfn_entry {
-	unsigned long dst_pfn;
-	unsigned long pages;
+	UINT64 dst_pfn;
+	UINT64 src_pfn;
+};
+
+struct bounce_book {
+	UINT32 pfn;
+	UINT32 num_pages;
+};
+
+struct free_book {
+	UINT32 pfn;
+	UINT32 num_pages;
 };
 
 /* Reserved some free memory for UEFI use */

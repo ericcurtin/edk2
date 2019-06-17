@@ -27,18 +27,17 @@
  */
 
 #if HIBERNATION_SUPPORT
-
 .globl JumpToKernel;
 
 /*
  * x18 = bounce_pfn_entry_table
  * x19 = bounce_count
- * x20 = bounce_start
  * x21 = cpu_resume
  * x22 = PreparePlatformHardware
  */
 JumpToKernel:
-	ldp	x4, x5, [x18], #16		// x4 = dst_pfn, x5 = pages, post increment x18
+	ldp	x4, x5, [x18], #16		// x4 = dst_pfn, x5 = src_pfn, post increment x18
+	mov	x8, #0x1000			// x8 = PAGE_SIZE
 	bl	copy				// copy pages
 	sub	x19, x19, #1			// decrement bounce_count
 	cbnz	x19, JumpToKernel		// loop until bounce_count equals 0
@@ -46,17 +45,16 @@ JumpToKernel:
 	br	x21
 /*
  * copy pages
- * x2 - bounce buffer
+ * x5 - src_pfn
  * x4 - dst_pfn
- * x5 - no of pages
+ * x8 - nbytes
  */
 copy:
-	lsl 	x4, x4, #12			// convert pfn to address
-	lsl 	x5, x5, #12			// convert no of pages to bytes
-1:	ldp	x6, x7, [x20], #16		// x6 = [x20], x7 = [x2 + 8 bytes], post increment x20
-	stp 	x6, x7, [x4], #16		// x6 -> [x4], x7 -> [x4 + 8 bytes], post increment x4
-	sub 	x5, x5, #16			// reduce copied bytes from size
-	cbnz	x5, 1b
+	lsl 	x4, x4, #12			// convert dst_pfn to address
+	lsl 	x5, x5, #12			// convert src_pfn
+1:	ldp	x6, x7, [x5], #16		// Read 16 bytes from src_pfn
+	stp 	x6, x7, [x4], #16		// Store 16 bytes to dst_pfn
+	sub 	x8, x8, #16			// reduce copied bytes from size
+	cbnz	x8, 1b
 	ret
-
 #endif
