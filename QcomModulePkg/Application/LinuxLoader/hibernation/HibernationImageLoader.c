@@ -35,16 +35,28 @@
 #include <Library/StackCanary.h>
 #include "Hibernation.h"
 
+/* Reserved some free memory for UEFI use */
+#define RESERVE_FREE_SIZE	1024*1024*10
 static struct addr_range reserve_range;
+
+/* Holds free memory ranges read from UEFI memory map */
 static struct free_ranges free_range_buf[100];
 static int free_range_max_index;
+
+/* number of data pages to be copied from swap */
 static unsigned int nr_copy_pages;
+/* number of meta pages or pages which hold pfn indexes */
 static unsigned int nr_meta_pages;
+
+/* carveout start address */
 static UINT64 bounce_book_base_addr = 0x140000000;
+
+/* Table of bounced entries that will be passed to relocation code */
 static struct bounce_pfn_entry *bounce_pfn_entry_table;
+/* current index into bounced entry table */
 static struct bounce_pfn_entry *next_bounce_pfn_entry;
 static unsigned long bounced_pages;
-static unsigned long bounce_entry_count;
+
 UINT64 relocation_base_addr;
 static struct swsusp_header *swsusp_header;
 static struct arch_hibernate_hdr *resume_hdr;
@@ -53,6 +65,8 @@ static struct free_book *fb;
 static struct free_book *free_book_base_addr;
 static struct bounce_book *bb;
 UINT32 fb_entries = 0;
+
+static void update_bounce_entry(UINT64 dst_pfn, UINT64 src_pfn);
 
 static int memcmp(const void *s1, const void *s2, int n)
 {
@@ -240,19 +254,19 @@ static int CheckFreeRanges (UINT64 target_addr)
 }
 
 /*
- * Function return 1 if page is bounced and 0 otherwise.
+ * Copy page to destination if page is free and is not in reserved area.
+ * Bounce page otherwise.
  */
-static int copy_page_to_dst(unsigned long src_pfn, unsigned long dst_pfn, unsigned long bounce_pfn)
+static void copy_page_to_dst(unsigned long src_pfn, unsigned long dst_pfn)
 {
-	int ret = 1;
 	UINT64 target_addr = dst_pfn << PAGE_SHIFT;
 
 	if (CheckFreeRanges(target_addr) && !is_reserved_addr(target_addr)) {
 		copyPage(src_pfn, dst_pfn);
-		ret = 0;
-	} else
-		copyPage(src_pfn, bounce_pfn);
-	return ret;
+	} else {
+		copyPage(src_pfn, bb->pfn);
+		update_bounce_entry(dst_pfn, bb->pfn);
+	}
 }
 
 static void update_bounce_entry(UINT64 dst_pfn, UINT64 src_pfn)
@@ -261,7 +275,6 @@ static void update_bounce_entry(UINT64 dst_pfn, UINT64 src_pfn)
 	next_bounce_pfn_entry->src_pfn = src_pfn;
 	next_bounce_pfn_entry++;
 	bounced_pages ++;
-	bounce_entry_count++;
 	bb++;
 
 	if (bounced_pages > MAX_BOUNCE_PAGES)
@@ -306,6 +319,7 @@ static void scan_last_meta_page(unsigned long *pfn_index_page)
 	 * of page.*/
 
 }
+
 static int mark_free_buffers(unsigned long *pfn_indices_start,
 			     unsigned long nr_meta_pages)
 {
@@ -358,7 +372,7 @@ static int swsusp_read(void)
 	unsigned long start_ms, temp, disk_read_ms = 0;
 	unsigned long copy_page_ms = 0;
 	unsigned long offset;
-	unsigned long src_pfn, dst_pfn, bounce_pfn;
+	unsigned long src_pfn, dst_pfn;
 	unsigned int pending_pfns, nr_read_pages;
 	unsigned long *pfns;
 	unsigned long pfn_index = 0;
@@ -477,12 +491,9 @@ static int swsusp_read(void)
 			if (!check_swap_map_page(offset)) {
 				dst_pfn = pfns[pfn_index++];
 				pending_pfns--;
-				bounce_pfn = bb->pfn;
 				temp = GetTimerCountms();
-				ret = copy_page_to_dst(src_pfn, dst_pfn, bounce_pfn);
+				copy_page_to_dst(src_pfn, dst_pfn);
 				copy_page_ms += (GetTimerCountms() - temp);
-				if (ret == 1)
-					update_bounce_entry(dst_pfn, bounce_pfn);
 			}
 			src_pfn++;
 			nr_read_pages--;
@@ -544,7 +555,7 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 		"b JumpToKernel"
 		:
 		:[table_base] "r" (bounce_pfn_entry_table),
-		[count] "r" (bounce_entry_count),
+		[count] "r" (bounced_pages),
 		[resume] "r" (cpu_resume),
 		[disable_cache] "r" (PreparePlatformHardware)
 		:"x18", "x19", "x21", "x22", "memory");

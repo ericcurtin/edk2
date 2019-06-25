@@ -117,8 +117,6 @@ struct free_book {
 	UINT32 num_pages;
 };
 
-/* Reserved some free memory for UEFI use */
-#define RESERVE_FREE_SIZE	1024*1024*10
 struct addr_range {
 	unsigned long start;
 	unsigned long end;
