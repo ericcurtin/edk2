@@ -41,7 +41,7 @@ static struct addr_range reserve_range;
 
 /* Holds free memory ranges read from UEFI memory map */
 static struct free_ranges free_range_buf[100];
-static int free_range_max_index;
+static int free_range_count;
 
 /* number of data pages to be copied from swap */
 static unsigned int nr_copy_pages;
@@ -107,7 +107,7 @@ static void preallocate_free_ranges(void)
 	UINT64 alloc_addr, range_size;
 	UINT64 num_pages;
 
-	for (i = free_range_max_index ; i >= 0 ; i--) {
+	for (i = free_range_count - 1; i >= 0 ; i--) {
 		range_size = free_range_buf[i].end - free_range_buf[i].start;
 		if (!reservation_done && range_size > RESERVE_FREE_SIZE) {
 			/*
@@ -120,6 +120,8 @@ static void preallocate_free_ranges(void)
 			num_pages = range_size/PAGE_SIZE;
 			reserve_range.start = free_range_buf[i].start;
 			reserve_range.end = alloc_addr;
+			printf("Reserved range = 0x%lx - 0x%lx\n", reserve_range.start,
+								reserve_range.end - 1);
 		} else {
 			alloc_addr = free_range_buf[i].start;
 			num_pages = range_size/PAGE_SIZE;
@@ -128,7 +130,8 @@ static void preallocate_free_ranges(void)
 		ret = gBS->AllocatePages(AllocateAddress, EfiBootServicesData,
 				num_pages, &alloc_addr);
 		if(ret)
-			printf("Fatal error alloc LINE %d\n", __LINE__);
+			printf("Fatal error alloc LINE %d alloc_addr = 0x%lx\n",
+							__LINE__, alloc_addr);
 	}
 }
 
@@ -148,6 +151,7 @@ static int get_uefi_memory_map(void)
 	UINTN			Index;
 	UINT32			DescriptorVersion;
 	EFI_STATUS		Status;
+	int index = 0;
 
 	MemMapSize = 0;
 	MemMap     = NULL;
@@ -180,14 +184,15 @@ static int get_uefi_memory_map(void)
 	}
 	for (Index = 0; Index < MemMapSize / DescriptorSize; Index ++) {
 		if (MemMap->Type == EfiConventionalMemory) {
-			free_range_buf[free_range_max_index].start = MemMap->PhysicalStart;
-			free_range_buf[free_range_max_index].end =  MemMap->PhysicalStart + MemMap->NumberOfPages * PAGE_SIZE;
-			DEBUG ((EFI_D_ERROR, "Free Range 0x%lx --- 0x%lx\n",free_range_buf[free_range_max_index].start,
-			free_range_buf[free_range_max_index].end));
-			free_range_max_index++;
+			free_range_buf[index].start = MemMap->PhysicalStart;
+			free_range_buf[index].end =  MemMap->PhysicalStart + MemMap->NumberOfPages * PAGE_SIZE;
+			DEBUG ((EFI_D_ERROR, "Free Range 0x%lx --- 0x%lx\n",free_range_buf[index].start,
+					free_range_buf[index].end));
+			index++;
 		}
 		MemMap = (EFI_MEMORY_DESCRIPTOR *)((UINTN)MemMap + DescriptorSize);
 	}
+	free_range_count = index;
 	FreePool (MemMapPtr);
 	return 0;
 }
@@ -244,7 +249,7 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages) {
 static int CheckFreeRanges (UINT64 target_addr)
 {
 	int i = 0;
-	while (i < free_range_max_index) {
+	while (i < free_range_count) {
 		if (target_addr >= free_range_buf[i].start &&
 			target_addr < free_range_buf[i].end)
 		return 1;
