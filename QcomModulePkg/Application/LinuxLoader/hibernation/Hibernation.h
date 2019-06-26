@@ -34,7 +34,6 @@
 #define PAGE_SHIFT	12
 #define PAGE_SIZE	(_AC(1, UL) << PAGE_SHIFT)
 #define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
-#define MAX_BOUNCE_PAGES        32768
 #define HIBERNATE_SIG           "S1SUSPEND"
 #define PFNS_PER_PAGE           512
 #define SWAP_INFO_OFFSET        2
@@ -96,30 +95,4 @@ struct arch_hibernate_hdr {
 	unsigned long	 __hyp_stub_vectors;
 	unsigned long	sleep_cpu_mpidr;
 };
-
-struct free_ranges {
-	UINT64 start;
-	UINT64 end;
-};
-
-struct bounce_pfn_entry {
-	UINT64 dst_pfn;
-	UINT64 src_pfn;
-};
-
-struct bounce_book {
-	UINT32 pfn;
-	UINT32 num_pages;
-};
-
-struct free_book {
-	UINT32 pfn;
-	UINT32 num_pages;
-};
-
-struct addr_range {
-	unsigned long start;
-	unsigned long end;
-};
-
 #endif
