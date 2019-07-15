@@ -60,9 +60,10 @@ static struct arch_hibernate_hdr *resume_hdr;
 static struct swsusp_info *swsusp_info;
 
 /*
- * Array of unused pfns - which doesn't overlap with kernel
- * or UEFI pages. These pfns will be used for bounce buffers,
- * bounce tables and relocation code.
+ * unused pfns are pnfs which doesn't overlap with image kernel pages
+ * or UEFI pages. This array is filled after going through the memory
+ * map of UEFI and image kernel. These pfns will be further used for
+ * bounce pages, bounce tables and relocation code.
  */
 struct unused_pfn_allocator {
 	unsigned long *array;
@@ -71,6 +72,15 @@ struct unused_pfn_allocator {
 };
 struct unused_pfn_allocator upa;
 
+/*
+ * Bounce Pages - During the copy of pages from snapshot image to
+ * RAM, certain pages can conflicts with concurrently running UEFI/ABL
+ * pages. These pages are copied temporarily to bounce pages. And
+ * during later stage, upon exit from UEFI boot services, these
+ * bounced pages are copied to their real destination. bounce_pfn_entry
+ * is used to store the location of temporary bounce pages and their
+ * real destination.
+ */
 struct bounce_pfn_entry {
 	UINT64 dst_pfn;
 	UINT64 src_pfn;
@@ -90,11 +100,12 @@ struct bounce_pfn_entry {
 
 #define	NUM_PAGES_FOR_TABLE	DIV_ROUND_UP(MAX_BOUNCE_PAGES, ENTRIES_PER_TABLE)
 #define	RELOC_CODE_PAGES	1
-#define	TOTAL_UNUSED_PFNS	(MAX_BOUNCE_PAGES + NUM_PAGES_FOR_TABLE + RELOC_CODE_PAGES)
+#define	TOTAL_REQUIRED_UNUSED_PFNS	(MAX_BOUNCE_PAGES + NUM_PAGES_FOR_TABLE + RELOC_CODE_PAGES)
 
 /*
+ * Bounce Tables -  bounced pfn entries are stored in bounced tables.
  * Bounce tables are discontinuous pages linked by the last element
- * of the page.
+ * of the page. Bounced table are allocated using unused pfn allocator.
  *
  *       ---------          	      ---------
  * 0   | dst | src |	----->	0   | dst | src |
@@ -111,18 +122,13 @@ struct bounce_table {
 	unsigned long padding;
 };
 
-/*
- * Base bounce table of bounced entries that will be passed to
- * relocation code.
- */
-struct bounce_table *base_bounce_table;
-
 struct bounce_table_iterator {
+	struct bounce_table *first_table;
 	struct bounce_table *cur_table;
 	/* next available free table entry */
 	int cur_index;
 };
-struct bounce_table_iterator bti;
+struct bounce_table_iterator table_iterator;
 
 /*
  * target_addr  : address where page allocation is needed
@@ -155,7 +161,7 @@ static unsigned long get_unused_pfn()
 static void reset_upa_index(void)
 {
 	upa.cur_index = 0;
-	upa.max_index = TOTAL_UNUSED_PFNS - 1;
+	upa.max_index = TOTAL_REQUIRED_UNUSED_PFNS - 1;
 }
 
 /* pfns not part of kernel & UEFI memory */
@@ -176,7 +182,7 @@ static void populate_unused_pfn_array(unsigned long *kernel_pfns)
 			if (!CheckFreeRanges(pfn << PAGE_SHIFT))
 				continue;
 			upa.array[upa.cur_index++] = pfn;
-			if (++pfns_marked >= TOTAL_UNUSED_PFNS)
+			if (++pfns_marked >= TOTAL_REQUIRED_UNUSED_PFNS)
 				return;
 		}
 	}
@@ -347,17 +353,36 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages) {
 	return 0;
 }
 
+static int is_current_table_full(struct bounce_table_iterator *bti)
+{
+	return (bti->cur_index == ENTRIES_PER_TABLE);
+}
+
+static void alloc_next_table(struct bounce_table_iterator *bti)
+{
+	/* Allocate and chain next bounce table */
+	bti->cur_table->next_bounce_table = get_unused_pfn() << PAGE_SHIFT;
+	bti->cur_table = (struct bounce_table *) bti->cur_table->next_bounce_table;
+	bti->cur_index = 0;
+}
+
+static struct bounce_pfn_entry * find_next_bounce_entry(void)
+{
+	struct bounce_table_iterator *bti = &table_iterator;
+
+	if (is_current_table_full(bti))
+		alloc_next_table(bti);
+
+	return &bti->cur_table->bounce_entry[bti->cur_index++];
+}
+
 static void update_bounce_entry(UINT64 dst_pfn, UINT64 src_pfn)
 {
-	if (bti.cur_index == ENTRIES_PER_TABLE) {
-		/* Allocate and chain next bounce table */
-		bti.cur_table->next_bounce_table = get_unused_pfn() << PAGE_SHIFT;
-		bti.cur_table = (struct bounce_table *) bti.cur_table->next_bounce_table;
-		bti.cur_index = 0;
-	}
+	struct bounce_pfn_entry *entry;
 
-	bti.cur_table->bounce_entry[bti.cur_index].dst_pfn = dst_pfn;
-	bti.cur_table->bounce_entry[bti.cur_index++].src_pfn = src_pfn;
+	entry = find_next_bounce_entry();
+	entry->dst_pfn = dst_pfn;
+	entry->src_pfn = src_pfn;
 	bounced_pages++;
 
 	if (bounced_pages > MAX_BOUNCE_PAGES)
@@ -495,8 +520,8 @@ static int swsusp_read(void)
 	populate_unused_pfn_array(kernel_pfns);
 	reset_upa_index();
 
-	base_bounce_table = (struct bounce_table *)(get_unused_pfn() << PAGE_SHIFT);
-	bti.cur_table = base_bounce_table;
+	table_iterator.first_table = (struct bounce_table *)(get_unused_pfn() << PAGE_SHIFT);
+	table_iterator.cur_table = table_iterator.first_table;
 
 	pending_pages = nr_copy_pages;
 	printf("Reading pages:     ");
@@ -579,7 +604,7 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 		"mov x22, %[disable_cache]\n"
 		"b JumpToKernel"
 		:
-		:[table_base] "r" (base_bounce_table),
+		:[table_base] "r" (table_iterator.first_table),
 		[count] "r" (bounced_pages),
 		[resume] "r" (cpu_resume),
 		[disable_cache] "r" (PreparePlatformHardware)
@@ -593,7 +618,7 @@ void BootIntoHibernationImage(void)
 	printf("===============================\n");
 	printf("Entrying Hibernation restore\n");
 
-	upa.array = AllocateZeroPool(TOTAL_UNUSED_PFNS * sizeof(unsigned long));
+	upa.array = AllocateZeroPool(TOTAL_REQUIRED_UNUSED_PFNS * sizeof(unsigned long));
 	if (!upa.array) {
 		printf("Failed to allocate memory for free pfn array\n");
 		return;
@@ -636,5 +661,4 @@ free_upa:
 	FreePool(upa.array);
 	return;
 }
-
 #endif
