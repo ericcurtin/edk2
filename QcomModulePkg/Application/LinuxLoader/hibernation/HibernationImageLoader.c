@@ -127,6 +127,12 @@ struct bounce_table_iterator {
 };
 struct bounce_table_iterator table_iterator;
 
+#define PFN_INDEXES_PER_PAGE		512
+/* Final entry is used to link swap_map pages together */
+#define ENTRIES_PER_SWAPMAP_PAGE 	(PFN_INDEXES_PER_PAGE - 1)
+
+#define SWAP_INFO_OFFSET        2
+#define FIRST_PFN_INDEX_OFFSET	(SWAP_INFO_OFFSET + 1)
 /*
  * target_addr  : address where page allocation is needed
  *
@@ -417,9 +423,13 @@ static void print_image_kernel_details(struct swsusp_info *info)
 	return;
 }
 
+/*
+ * swap_map pages are at offsets 1, 513, 1025, 1537,....
+ * This function returns true if offset belongs to a swap_map page.
+ */
 static int check_swap_map_page(unsigned long offset)
 {
-	return !((offset -1) % PFNS_PER_PAGE);
+	return (offset % PFN_INDEXES_PER_PAGE) == 1;
 }
 
 static int read_swap_info_struct(void)
@@ -448,63 +458,113 @@ static int read_swap_info_struct(void)
 }
 
 /*
- * Reads image kernel pfn indexes and strip off
- * swap_map pages.
+ * Reads image kernel pfn indexes by stripping off interleaved swap_map pages.
+ *
+ * swap_map pages are particularly useful when swap slot allocations are
+ * randomized. For bootloader based hibernation we have disabled this for
+ * performance reasons. But swap_map pages are still interleaved because
+ * kernel/power/snapshot.c is written to handle both scenarios(sequential
+ * and randomized swap slot).
+ *
+ * Snapshot layout in disk with randomization disabled for swap allocations in
+ * kernel looks likes:
+ *
+ *			disk offsets
+ *				|
+ *				|
+ * 				V
+ * 				   -----------------------
+ * 				0 |     header		  |
+ * 				  |-----------------------|
+ * 				1 |  swap_map page 0	  |
+ * 				  |-----------------------|	      ------
+ * 				2 |  swsusp_info struct	  |		 ^
+ * 	------			  |-----------------------|		 |
+ * 	  ^			3 |  PFN INDEX Page 0	  |		 |
+ * 	  |		          |-----------------------|		 |
+ * 	  |	 		4 |  PFN INDEX Page 1	  |	      	 |
+ *   	  |			  |-----------------------|	511 swap map entries
+ * 510 pfn index pages		  |     :       :         |		 |
+ *  	  |			  |  	:	:	  |		 |
+ *  	  |			  |  	:	:	  |		 |
+ *  	  |			  |-----------------------|		 |
+ *  	  V		      512 |  PFN INDEX Page 509	  |		 V
+ * 	------	    	          |-----------------------|	       -----
+ * 		    	      513 |  swap_map page 1  	  |
+ * 	------			  |-----------------------|	       ------
+ * 	  ^		      514 |  PFN INDEX Page 510   |		 ^
+ * 	  |		          |-----------------------|		 |
+ * 	  |	 	      515 |  PFN INDEX Page 511	  |		 |
+ *   	  |			  |-----------------------|		 |
+ * 511 pfn index pages		  |     :       :         |	511 swap map entries
+ *  	  |			  |  	:	:	  |		 |
+ *  	  |			  |  	:	:	  |		 |
+ *  	  |			  |-----------------------|		 |
+ *  	  V		     1024 |  PFN INDEX Page 1021  |		 V
+ * 	------	    	          |-----------------------|	       ------
+ * 		    	     1025 |  swap_map page 2  	  |
+ * 	------			  |-----------------------|
+ * 	  ^		     1026 |  PFN INDEX Page 1022  |
+ * 	  |		          |-----------------------|
+ * 	  |	 	     1027 |  PFN INDEX Page 1023  |
+ *   	  |			  |-----------------------|
+ * 511 pfn index pages		  |     :       :         |
+ *  	  |			  |  	:	:	  |
+ *  	  |			  |  	:	:	  |
+ *  	  |			  |-----------------------|
+ *  	  V		     1536 |  PFN INDEX Page 1532  |
+ * 	------	    	          |-----------------------|
+ * 		    	     1537 |  swap_map page 3  	  |
+ * 				  |-----------------------|
+ * 			     1538 |  PFN INDEX Page 1533  |
+ * 			          |-----------------------|
+ * 			     1539 |  PFN INDEX Page 1534  |
+ * 				  |-----------------------|
+ * 				  |     :       :         |
+ * 				  |  	:	:	  |
  */
 static unsigned long* read_kernel_image_pfn_indexes(unsigned long *offset)
 {
-	unsigned long *pfn_index_array;
-	unsigned long read_size;
-	unsigned long read_meta_pages, rem_meta_pages;
-	int ret;
+	unsigned long *pfn_array, *array_index;
+	unsigned long pending_pages = nr_meta_pages;
+	unsigned long pages_to_read, pages_read = 0;
+	unsigned long disk_offset;
+	int loop = 0, ret;
 
-	pfn_index_array = AllocatePages(nr_meta_pages);
-	if (!pfn_index_array) {
+	pfn_array = AllocatePages(nr_meta_pages);
+	if (!pfn_array) {
 		printf("Memory alloc failed Line %d\n", __LINE__);
 		return NULL;
 	}
 
+	disk_offset = FIRST_PFN_INDEX_OFFSET;
 	/*
-	 * First swap_map page need special handling becasue
-	 * first index points to swap_info structure. It
-	 * can have max only (PFNS_PER_PAGE - 2) pfn indexes.
+	 * First swap_map page has one less pfn_index page
+	 * because of presence of swsusp_info struct. Handle
+	 * it separately.
 	 */
-	read_size = nr_meta_pages < (PFNS_PER_PAGE - 2) ? nr_meta_pages : PFNS_PER_PAGE - 2;
-	ret = read_image(*offset, pfn_index_array, read_size);
-	if (ret) {
-		printf("Failed to read meta pages from disk %d\n", __LINE__);
-		goto err;
-	}
-	*offset += read_size;
-	read_meta_pages = read_size;
-
-	if (nr_meta_pages >= PFNS_PER_PAGE - 2) {
-		/* skip swap_map page */
-		*offset += 1;
-		while (nr_meta_pages != read_meta_pages) {
-			rem_meta_pages = nr_meta_pages - read_meta_pages;
-			read_size = rem_meta_pages > PFNS_PER_PAGE - 1 ? PFNS_PER_PAGE - 1 : rem_meta_pages;
-			ret = read_image(*offset, pfn_index_array + read_meta_pages * PFNS_PER_PAGE, read_size);
-			if (ret) {
-				printf("Failed to read meta pages from disk %d\n", __LINE__);
-				goto err;
-			}
-			read_meta_pages += read_size;
-			*offset += read_size;
-
-			/* skip swap_map page */
-			if (read_size == PFNS_PER_PAGE - 1)
-				*offset += 1;
+	pages_to_read = MIN(pending_pages, ENTRIES_PER_SWAPMAP_PAGE - 1);
+	array_index = pfn_array;
+	do {
+		ret = read_image(disk_offset, array_index, pages_to_read);
+		if (ret) {
+			printf("Disk read failed Line %d\n", __LINE__);
+			goto err;
 		}
-	}
+		pages_read += pages_to_read;
+		pending_pages -= pages_to_read;
+		if (!pending_pages)
+			break;
+		loop++;
+		disk_offset = loop * PFN_INDEXES_PER_PAGE + 2;
+		pages_to_read = MIN(pending_pages, ENTRIES_PER_SWAPMAP_PAGE);
+		array_index = pfn_array + pages_read * PFN_INDEXES_PER_PAGE;
+	} while (1);
 
-	if (read_meta_pages != nr_meta_pages) {
-		printf("Mismatch in reading nr_meta_pages\n");
-		goto err;
-	}
-	return pfn_index_array;
+	*offset = disk_offset + pages_to_read;
+	return pfn_array;
 err:
-	FreePages(pfn_index_array, nr_meta_pages);
+	FreePages(pfn_array, nr_meta_pages);
 	return NULL;
 }
 
@@ -532,7 +592,7 @@ static int read_data_pages(unsigned long *kernel_pfn_indexes,
 		}
 		src_pfn = (unsigned long) disk_read_buffer >> PAGE_SHIFT;
 		while (nr_read_pages > 0) {
-			/* Skip swap_map pages */
+			/* skip swap_map pages */
 			if (!check_swap_map_page(offset)) {
 				dst_pfn = kernel_pfn_indexes[pfn_index++];
 				pending_pages--;
@@ -559,9 +619,10 @@ static int read_data_pages(unsigned long *kernel_pfn_indexes,
 static int restore_snapshot_image(void)
 {
 	int ret;
+	void *disk_read_buffer;
 	unsigned long start_ms, offset;
 	unsigned long *kernel_pfn_indexes;
-	void *disk_read_buffer;
+	struct bounce_table_iterator *bti = &table_iterator;
 
 	start_ms = GetTimerCountms();
 	ret = read_swap_info_struct();
@@ -591,8 +652,8 @@ static int restore_snapshot_image(void)
 
 	populate_unused_pfn_array(kernel_pfn_indexes);
 
-	table_iterator.first_table = (struct bounce_table *)(get_unused_pfn() << PAGE_SHIFT);
-	table_iterator.cur_table = table_iterator.first_table;
+	bti->first_table = (struct bounce_table *)(get_unused_pfn() << PAGE_SHIFT);
+	bti->cur_table = bti->first_table;
 
 	ret = read_data_pages(kernel_pfn_indexes, offset, disk_read_buffer);
 	if (ret < 0) {
@@ -611,6 +672,7 @@ err:
 static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 {
 	int Status;
+	struct bounce_table_iterator *bti = &table_iterator;
 	unsigned long cpu_resume = (unsigned long )resume_hdr->phys_reenter_kernel;
 
 	/* TODO:
@@ -627,7 +689,7 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 	printf("Disable UEFI Boot services\n");
 	printf("Kernel entry point = 0x%lx\n", cpu_resume);
 
-	/*Shut down UEFI boot services*/
+	/* Shut down UEFI boot services */
 	Status = ShutdownUefiBootServices ();
 	if (EFI_ERROR (Status)) {
 		DEBUG ((EFI_D_ERROR,
@@ -643,7 +705,7 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 		"mov x22, %[disable_cache]\n"
 		"b JumpToKernel"
 		:
-		:[table_base] "r" (table_iterator.first_table),
+		:[table_base] "r" (bti->first_table),
 		[count] "r" (bounced_pages),
 		[resume] "r" (cpu_resume),
 		[disable_cache] "r" (PreparePlatformHardware)

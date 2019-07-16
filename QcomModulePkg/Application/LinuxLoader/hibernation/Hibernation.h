@@ -35,10 +35,7 @@
 #define PAGE_SIZE	(_AC(1, UL) << PAGE_SHIFT)
 #define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
 #define HIBERNATE_SIG           "S1SUSPEND"
-#define PFNS_PER_PAGE           512
-#define SWAP_INFO_OFFSET        2
 #define __NEW_UTS_LEN 64
-#define NUM_FREE_BOOK_PAGES 64
 
 /* Return True if integer overflow will occur */
 #define CHECK_ADD64(a, b) ((MAX_UINT64 - b < a) ? TRUE : FALSE)
