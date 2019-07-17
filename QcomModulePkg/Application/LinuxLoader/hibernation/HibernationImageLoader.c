@@ -83,13 +83,24 @@ struct bounce_pfn_entry {
 	UINT64 src_pfn;
 };
 
-/* Size of the buffer where disk IO is performed */
+/*
+ * Size of the buffer where disk IO is performed.If any kernel pages are
+ * destined to be here, they will be bounced.
+ */
 #define	DISK_BUFFER_SIZE	64*1024*1024
 #define	DISK_BUFFER_PAGES	(DISK_BUFFER_SIZE / PAGE_SIZE)
 
 #define	OUT_OF_MEMORY	-1
 
-#define	MAX_BOUNCE_SIZE		150*1024*1024
+/*
+ * Heuristically we saw around 70-80 MB of bounce is used because
+ * of overlap with UEFI/ABL memory map.
+ */
+#define EXPECTED_BOUNCE_SIZE	90*1024*1024
+/*  Bounce buffers may increse due disk buffer allocation. Worst case is upto
+ *  DISK_BUFFER_SIZE. Account for that.
+ */
+#define	MAX_BOUNCE_SIZE		(DISK_BUFFER_SIZE + EXPECTED_BOUNCE_SIZE)
 #define	MAX_BOUNCE_PAGES	(MAX_BOUNCE_SIZE/PAGE_SIZE)
 
 #define	BOUNCE_TABLE_ENTRY_SIZE	sizeof(struct bounce_pfn_entry)
@@ -133,6 +144,9 @@ struct bounce_table_iterator table_iterator;
 
 #define SWAP_INFO_OFFSET        2
 #define FIRST_PFN_INDEX_OFFSET	(SWAP_INFO_OFFSET + 1)
+
+#define SWAP_PARTITION_NAME	L"system_b"
+
 /*
  * target_addr  : address where page allocation is needed
  *
@@ -171,7 +185,7 @@ static void reset_upa_index(void)
 	upa->max_index = TOTAL_REQUIRED_UNUSED_PFNS - 1;
 }
 
-/* pfns not part of kernel & UEFI memory */
+/* pfns not part of kernel and UEFI memory */
 static void populate_unused_pfn_array(unsigned long *kernel_pfn_indexes)
 {
 	struct unused_pfn_allocator *upa = &unused_pfn_allocator;
@@ -328,24 +342,23 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages) {
 	EFI_BLOCK_IO_PROTOCOL *BlockIo = NULL;
 	EFI_HANDLE *Handle = NULL;
 
-	Status = PartitionGetInfo (L"system_b", &BlockIo, &Handle);
+	Status = PartitionGetInfo (SWAP_PARTITION_NAME, &BlockIo, &Handle);
 	if (Status != EFI_SUCCESS)
 		return Status;
 
 	if (!Handle) {
-		DEBUG ((EFI_D_ERROR, "EFI handle for system_b is corrupted\n"));
+		printf("EFI handle for swap partition is corrupted\n");
 		return -1;
 	}
 
 	if (CHECK_ADD64 (BlockIo->Media->LastBlock, 1)) {
-		DEBUG ((EFI_D_ERROR, "Integer overflow while adding LastBlock and 1\n"));
+		printf("Integer overflow while adding LastBlock and 1\n");
 		return -1;
 	}
 
 	if ((MAX_UINT64 / (BlockIo->Media->LastBlock + 1)) <
 			(UINT64)BlockIo->Media->BlockSize) {
-		DEBUG ((EFI_D_ERROR,
-			"Integer overflow while multiplying LastBlock and BlockSize\n"));
+		printf("Integer overflow while multiplying LastBlock and BlockSize\n");
 		return -1;
 	}
 
@@ -438,12 +451,12 @@ static int read_swap_info_struct(void)
 
 	info = AllocatePages(1);
 	if (!info) {
-		printf("Failed to allocate memory for swsusp_info %d\n",__LINE__);
+		printf("Memory alloc failed Line %d\n",__LINE__);
 		return -1;
 	}
 
 	if (read_image(SWAP_INFO_OFFSET, info, 1)) {
-		printf("Failed to read swsusp_info %d\n", __LINE__);
+		printf("Failed to read Line %d\n", __LINE__);
 		FreePages(info, 1);
 		return -1;
 	}
@@ -556,6 +569,10 @@ static unsigned long* read_kernel_image_pfn_indexes(unsigned long *offset)
 		if (!pending_pages)
 			break;
 		loop++;
+		/*
+		 * swap_map pages are at (512n + 1), so pfn_index pages
+		 * starst at (512n + 2)
+		 */
 		disk_offset = loop * PFN_INDEXES_PER_PAGE + 2;
 		pages_to_read = MIN(pending_pages, ENTRIES_PER_SWAPMAP_PAGE);
 		array_index = pfn_array + pages_read * PFN_INDEXES_PER_PAGE;
@@ -587,7 +604,7 @@ static int read_data_pages(unsigned long *kernel_pfn_indexes,
 		ret = read_image(offset, disk_read_buffer, nr_read_pages);
 		disk_read_ms += (GetTimerCountms() - temp);
 		if (ret < 0) {
-			printf("Failed to read data pages from disk %d\n", __LINE__);
+			printf("Disk read failed Line %d\n", __LINE__);
 			return -1;
 		}
 		src_pfn = (unsigned long) disk_read_buffer >> PAGE_SHIFT;
@@ -629,14 +646,13 @@ static int restore_snapshot_image(void)
 	if (ret < 0)
 		return ret;
 
-	offset = SWAP_INFO_OFFSET + 1;
 	kernel_pfn_indexes = read_kernel_image_pfn_indexes(&offset);
 	if (!kernel_pfn_indexes)
 		return -1;
 
 	disk_read_buffer =  AllocatePages(DISK_BUFFER_PAGES);
 	if (!disk_read_buffer) {
-		printf("Disk buffer alloc failed\n");
+		printf("Memory alloc failed Line %d\n", __LINE__);
 		return -1;
 	} else {
 		printf("Disk buffer alloction at 0x%p - 0x%p\n", disk_read_buffer,
@@ -657,7 +673,7 @@ static int restore_snapshot_image(void)
 
 	ret = read_data_pages(kernel_pfn_indexes, offset, disk_read_buffer);
 	if (ret < 0) {
-		printf("error restore_snapshot_image\n");
+		printf("error in restore_snapshot_image\n");
 		goto err;
 	}
 
@@ -718,12 +734,12 @@ static int check_for_valid_header(void)
 
 	swsusp_header = AllocatePages(1);
 	if(!swsusp_header) {
-		printf("AllocatePages failed Line = %d\n", __LINE__);
+		printf("Memory alloc failed Line %d\n", __LINE__);
 		return -1;
 	}
 
 	if (read_image(0, swsusp_header, 1)) {
-		printf("Failed to read image at offset 0\n");
+		printf("Disk read failed Line %d\n", __LINE__);
 		goto read_image_error;
 	}
 
@@ -753,7 +769,7 @@ void BootIntoHibernationImage(void)
 
 	upa->array = AllocateZeroPool(TOTAL_REQUIRED_UNUSED_PFNS * sizeof(unsigned long));
 	if (!upa->array) {
-		printf("Failed to allocate memory for free pfn array\n");
+		printf("Memory alloc failed Line %d\n", __LINE__);
 		return;
 	}
 
