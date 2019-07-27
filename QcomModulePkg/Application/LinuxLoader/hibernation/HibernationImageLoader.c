@@ -35,6 +35,11 @@
 #include <Library/StackCanary.h>
 #include "Hibernation.h"
 
+#define BUG(fmt, ...) {\
+		printf("Fatal error " fmt, ##__VA_ARGS__);\
+		while(1);\
+	}
+
 /* Reserved some free memory for UEFI use */
 #define RESERVE_FREE_SIZE	1024*1024*10
 struct free_ranges {
@@ -56,18 +61,18 @@ static unsigned long bounced_pages;
 static UINT64 relocation_base_addr;
 static struct arch_hibernate_hdr *resume_hdr;
 
-/*
- * unused pfns are pnfs which doesn't overlap with image kernel pages
- * or UEFI pages. This array is filled after going through the memory
- * map of UEFI and image kernel. These pfns will be further used for
- * bounce pages, bounce tables and relocation code.
- */
-struct unused_pfn_allocator {
-	unsigned long *array;
+struct pfn_block {
+	unsigned long base_pfn;
+	int available_pfns;
+};
+
+struct kernel_pfn_iterator {
+	unsigned long *pfn_array;
 	int cur_index;
 	int max_index;
+	struct pfn_block cur_block;
 };
-struct unused_pfn_allocator unused_pfn_allocator;
+static struct kernel_pfn_iterator kernel_pfn_iterator;
 
 /*
  * Bounce Pages - During the copy of pages from snapshot image to
@@ -92,23 +97,8 @@ struct bounce_pfn_entry {
 
 #define	OUT_OF_MEMORY	-1
 
-/*
- * Heuristically we saw around 70-80 MB of bounce is used because
- * of overlap with UEFI/ABL memory map.
- */
-#define EXPECTED_BOUNCE_SIZE	90*1024*1024
-/*  Bounce buffers may increse due disk buffer allocation. Worst case is upto
- *  DISK_BUFFER_SIZE. Account for that.
- */
-#define	MAX_BOUNCE_SIZE		(DISK_BUFFER_SIZE + EXPECTED_BOUNCE_SIZE)
-#define	MAX_BOUNCE_PAGES	(MAX_BOUNCE_SIZE/PAGE_SIZE)
-
 #define	BOUNCE_TABLE_ENTRY_SIZE	sizeof(struct bounce_pfn_entry)
 #define	ENTRIES_PER_TABLE	(PAGE_SIZE / BOUNCE_TABLE_ENTRY_SIZE) - 1
-
-#define	NUM_PAGES_FOR_TABLE	DIV_ROUND_UP(MAX_BOUNCE_PAGES, ENTRIES_PER_TABLE)
-#define	RELOC_CODE_PAGES	1
-#define	TOTAL_REQUIRED_UNUSED_PFNS	(MAX_BOUNCE_PAGES + NUM_PAGES_FOR_TABLE + RELOC_CODE_PAGES)
 
 /*
  * Bounce Tables -  bounced pfn entries are stored in bounced tables.
@@ -165,55 +155,6 @@ static int CheckFreeRanges (UINT64 target_addr)
 	return 0;
 }
 
-/* get a pfn which is unsued by kernel or UEFI */
-static unsigned long get_unused_pfn()
-{
-	struct unused_pfn_allocator *upa = &unused_pfn_allocator;
-
-	if (upa->cur_index > upa->max_index) {
-		printf("Out of memory get_unused_pfn\n");
-		return OUT_OF_MEMORY;
-	}
-	return upa->array[upa->cur_index++];
-}
-
-static void reset_upa_index(void)
-{
-	struct unused_pfn_allocator *upa = &unused_pfn_allocator;
-
-	upa->cur_index = 0;
-	upa->max_index = TOTAL_REQUIRED_UNUSED_PFNS - 1;
-}
-
-/* pfns not part of kernel and UEFI memory */
-static void populate_unused_pfn_array(unsigned long *kernel_pfn_indexes)
-{
-	struct unused_pfn_allocator *upa = &unused_pfn_allocator;
-	int pfns_marked = 0;
-	unsigned long i, pfn, end_pfn;
-	int available_pfns;
-
-	reset_upa_index();
-	for (i = 0; i < nr_copy_pages; i++) {
-		/* Pick kernel unused pfns first */
-		available_pfns = kernel_pfn_indexes[i + 1] - kernel_pfn_indexes[i] - 1;
-		if (!available_pfns)
-			continue;
-		end_pfn = kernel_pfn_indexes[i + 1];
-		for (pfn = kernel_pfn_indexes[i] + 1; pfn < end_pfn; pfn++) {
-			/* Check if used by UEFI */
-			if (!CheckFreeRanges(pfn << PAGE_SHIFT))
-				continue;
-			upa->array[upa->cur_index++] = pfn;
-			if (++pfns_marked >= TOTAL_REQUIRED_UNUSED_PFNS)
-				goto done;
-		}
-	}
-	printf("Failed to find sufficient unused pages\n");
-done:
-	reset_upa_index();
-}
-
 static int memcmp(const void *s1, const void *s2, int n)
 {
 	const unsigned char *us1 = s1;
@@ -235,6 +176,61 @@ static void copyPage(unsigned long src_pfn, unsigned long dst_pfn)
 	unsigned long *dst = (unsigned long*)(dst_pfn << PAGE_SHIFT);
 
 	gBS->CopyMem (dst, src, PAGE_SIZE);
+}
+
+static void init_kernel_pfn_iterator(unsigned long *array)
+{
+	struct kernel_pfn_iterator *iter = &kernel_pfn_iterator;
+	iter->pfn_array = array;
+	iter->max_index = nr_copy_pages;
+}
+
+static int find_next_available_block(struct kernel_pfn_iterator *iter)
+{
+	int available_pfns;
+
+	do {
+		unsigned long cur_pfn, next_pfn;
+		iter->cur_index++;
+		if (iter->cur_index >= iter->max_index)
+			BUG("index maxed out. Line %d\n", __LINE__);
+		cur_pfn = iter->pfn_array[iter->cur_index];
+		next_pfn = iter->pfn_array[iter->cur_index + 1];
+		available_pfns = next_pfn - cur_pfn - 1;
+	 } while (!available_pfns);
+
+	iter->cur_block.base_pfn = iter->pfn_array[iter->cur_index];
+	iter->cur_block.available_pfns = available_pfns;
+	return 0;
+}
+
+static unsigned long get_unused_kernel_pfn(void)
+{
+	struct kernel_pfn_iterator *iter = &kernel_pfn_iterator;
+
+	if (!iter->cur_block.available_pfns)
+		find_next_available_block(iter);
+
+	iter->cur_block.available_pfns--;
+	return iter->cur_block.base_pfn++;
+}
+
+/*
+ * get a pfn which is unused by kernel and UEFI.
+ *
+ * unused pfns are pnfs which doesn't overlap with image kernel pages
+ * or UEFI pages. These pfns are used for bounce pages, bounce tables
+ * and relocation code.
+ */
+static unsigned long get_unused_pfn()
+{
+	unsigned long pfn;
+
+	do {
+		pfn = get_unused_kernel_pfn();
+	} while(!CheckFreeRanges(pfn << PAGE_SHIFT));
+
+	return pfn;
 }
 
 /*
@@ -408,9 +404,6 @@ static void update_bounce_entry(UINT64 dst_pfn, UINT64 src_pfn)
 	entry->dst_pfn = dst_pfn;
 	entry->src_pfn = src_pfn;
 	bounced_pages++;
-
-	if (bounced_pages > MAX_BOUNCE_PAGES)
-		printf("Error: Bounce buffers' limit exceeded\n");
 }
 
 /*
@@ -649,6 +642,7 @@ static int restore_snapshot_image(void)
 	kernel_pfn_indexes = read_kernel_image_pfn_indexes(&offset);
 	if (!kernel_pfn_indexes)
 		return -1;
+	init_kernel_pfn_iterator(kernel_pfn_indexes);
 
 	disk_read_buffer =  AllocatePages(DISK_BUFFER_PAGES);
 	if (!disk_read_buffer) {
@@ -665,8 +659,6 @@ static int restore_snapshot_image(void)
 	 */
 	get_uefi_memory_map();
 	preallocate_free_ranges();
-
-	populate_unused_pfn_array(kernel_pfn_indexes);
 
 	bti->first_table = (struct bounce_table *)(get_unused_pfn() << PAGE_SHIFT);
 	bti->cur_table = bti->first_table;
@@ -759,7 +751,6 @@ read_image_error:
 void BootIntoHibernationImage(void)
 {
 	int ret;
-	struct unused_pfn_allocator *upa = &unused_pfn_allocator;
 
 	printf("===============================\n");
 	printf("Entrying Hibernation restore\n");
@@ -767,24 +758,16 @@ void BootIntoHibernationImage(void)
 	if (check_for_valid_header() < 0)
 		return;
 
-	upa->array = AllocateZeroPool(TOTAL_REQUIRED_UNUSED_PFNS * sizeof(unsigned long));
-	if (!upa->array) {
-		printf("Memory alloc failed Line %d\n", __LINE__);
-		return;
-	}
-
 	ret = restore_snapshot_image();
 	if (ret) {
 		printf("Failed restore_snapshot_image \n");
-		goto free_upa;
+		return;
 	}
 
 	relocation_base_addr = get_unused_pfn() << PAGE_SHIFT;
 	copy_bounce_and_boot_kernel(relocation_base_addr);
 	/* We should not reach here */
 
-free_upa:
-	FreePool(upa->array);
 	return;
 }
 #endif
