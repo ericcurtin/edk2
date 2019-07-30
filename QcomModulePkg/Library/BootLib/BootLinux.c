@@ -978,6 +978,7 @@ BootLinux (BootInfo *Info)
   CHAR16 *PartitionName = NULL;
   BOOLEAN Recovery = FALSE;
   BOOLEAN AlarmBoot = FALSE;
+  BOOLEAN FlashlessBoot = Info->FlashlessBoot;
 
   LINUX_KERNEL LinuxKernel;
   LINUX_KERNEL32 LinuxKernel32;
@@ -1009,8 +1010,12 @@ BootLinux (BootInfo *Info)
   Recovery = Info->BootIntoRecovery;
   AlarmBoot = Info->BootReasonAlarm;
 
-  if (!StrnCmp (PartitionName, (CONST CHAR16 *)L"boot",
-                StrLen ((CONST CHAR16 *)L"boot"))) {
+  FfbmStr[0] = '\0';
+  if (FlashlessBoot)
+    goto skip_FfbmStr;
+
+  if(!StrnCmp (PartitionName, (CONST CHAR16 *)L"boot",
+          StrLen ((CONST CHAR16 *)L"boot"))) {
     Status = GetFfbmCommand (FfbmStr, FFBM_MODE_BUF_SIZE);
     if (Status != EFI_SUCCESS) {
       DEBUG ((EFI_D_INFO, "No Ffbm cookie found, ignore: %r\n", Status));
@@ -1018,6 +1023,7 @@ BootLinux (BootInfo *Info)
     }
   }
 
+skip_FfbmStr:
   Status = GetImage (Info,
                      &BootParamlistPtr.ImageBuffer,
                      (UINTN *)&BootParamlistPtr.ImageSize,
@@ -1138,7 +1144,8 @@ BootLinux (BootInfo *Info)
   }
 
   Status = UpdateCmdLine (BootParamlistPtr.CmdLine, FfbmStr, Recovery,
-                   AlarmBoot, Info->VBCmdLine, &BootParamlistPtr.FinalCmdLine);
+                   FlashlessBoot, AlarmBoot, Info->VBCmdLine,
+		   &BootParamlistPtr.FinalCmdLine);
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_ERROR, "Error updating cmdline. Device Error %r\n", Status));
     return Status;

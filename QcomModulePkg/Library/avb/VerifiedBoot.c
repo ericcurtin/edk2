@@ -41,6 +41,7 @@ STATIC CONST CHAR8 *KeymasterLoadState = " androidboot.keymaster=1";
 STATIC CONST CHAR8 *DmVerityCmd = " root=/dev/dm-0 dm=\"system none ro,0 1 "
                                     "android-verity";
 STATIC CONST CHAR8 *Space = " ";
+extern UINT64 FlashlessBootImageAddr;
 
 #define MAX_NUM_REQ_PARTITION    8
 #define MAX_PROPERTY_SIZE        10
@@ -279,6 +280,28 @@ IsRootCmdLineUpdated (BootInfo *Info)
   }
 }
 
+STATIC EFI_STATUS
+LocateImageNoAuth (BootInfo *Info)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  UINT32 PageSize = 0;
+  UINT32 ImageHdrSize = BOOT_IMG_MAX_PAGE_SIZE;
+
+  Info->Images[0].ImageBuffer = (VOID *)FlashlessBootImageAddr;
+  Status = CheckImageHeader (Info->Images[0].ImageBuffer, ImageHdrSize,
+  			    (UINT32 *)&(Info->Images[0].ImageSize),
+                             &PageSize, FALSE);
+  if (Status != EFI_SUCCESS)
+    return Status;
+
+  Info->NumLoadedImages = 1;
+  Info->Images[0].Name = AllocateZeroPool (StrLen (Info->Pname) + 1);
+
+  /* Flow ahead searches for Images.Name to find "boot" so we make it as "boot"
+   * as if we loaded from the boot partition */
+  UnicodeStrToAsciiStr (Info->Pname, Info->Images[0].Name);
+  return Status;
+}
 
 STATIC EFI_STATUS
 LoadImageNoAuth (BootInfo *Info)
@@ -372,6 +395,7 @@ LoadImageNoAuthWrapper (BootInfo *Info)
         !IsRootCmdLineUpdated (Info)) {
     SystemPathLen = GetSystemPath (&SystemPath,
                                    Info->MultiSlotBoot,
+				   Info->FlashlessBoot,
                                    Info->BootIntoRecovery,
                                    (CHAR16 *)L"system",
                                    (CHAR8 *)"root");
@@ -439,6 +463,7 @@ LoadImageAndAuthVB1 (BootInfo *Info)
   if (!IsRootCmdLineUpdated (Info)) {
     SystemPathLen = GetSystemPath (&SystemPath,
                                    Info->MultiSlotBoot,
+				   Info->FlashlessBoot,
                                    Info->BootIntoRecovery,
                                    (CHAR16 *)L"system",
                                    (CHAR8 *)"root");
@@ -1264,7 +1289,17 @@ STATIC EFI_STATUS LoadImageAndAuthForLE (BootInfo *Info)
     /*Load image*/
     GUARD (VBAllocateCmdLine (Info));
     GUARD (VBCommonInit (Info));
-    GUARD (LoadImageNoAuth (Info));
+
+    /* In case of flashless LE devices images are already loaded and verified
+     * by previous bootloaders, so just fill the BootInfo structure with required
+     * parameters
+     */
+    if (Info->FlashlessBoot) {
+      GUARD (LocateImageNoAuth (Info));
+      goto skip_verification;
+    }
+    else
+      GUARD (LoadImageNoAuth (Info));
 
     Status = IsSecureDevice (&SecureDevice);
     if (Status != EFI_SUCCESS) {
@@ -1342,6 +1377,7 @@ skip_verification:
     if (!IsRootCmdLineUpdated (Info)) {
         SystemPathLen = GetSystemPath (&SystemPath,
                                        Info->MultiSlotBoot,
+				       Info->FlashlessBoot,
                                        Info->BootIntoRecovery,
                                        (CHAR16 *)L"system",
                                        (CHAR8 *)"root");

@@ -90,6 +90,7 @@ EFI_STATUS
 UpdateCmdLine (CONST CHAR8 *CmdLine,
                CHAR8 *FfbmStr,
                BOOLEAN Recovery,
+	       BOOLEAN FlashlessBoot,
                BOOLEAN AlarmBoot,
                CONST CHAR8 *VBCmdLine,
                CHAR8 **FinalCmdLine);
@@ -98,5 +99,6 @@ TargetBatterySocOk (UINT32 *BatteryVoltage);
 
 UINT32
 GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
-               BOOLEAN BootIntoRecovery, CHAR16 *ReqPartition, CHAR8 *Key);
+	       BOOLEAN FlashlessBoot, BOOLEAN BootIntoRecovery,
+	       CHAR16 *ReqPartition, CHAR8 *Key);
 #endif

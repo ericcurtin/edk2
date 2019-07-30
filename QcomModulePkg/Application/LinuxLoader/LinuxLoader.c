@@ -55,7 +55,7 @@ void BootIntoHibernationImage(void);
 STATIC BOOLEAN BootReasonAlarm = FALSE;
 STATIC BOOLEAN BootIntoFastboot = FALSE;
 STATIC BOOLEAN BootIntoRecovery = FALSE;
-
+UINT64 FlashlessBootImageAddr = 0;
 STATIC VOID* UnSafeStackPtr;
 
 STATIC EFI_STATUS __attribute__ ( (no_sanitize ("safe-stack")))
@@ -153,6 +153,9 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
   UINT32 KeyPressed = SCAN_NULL;
   /* MultiSlot Boot */
   BOOLEAN MultiSlotBoot;
+  /* Flashless Boot */
+  BOOLEAN FlashlessBoot = FALSE;
+  UINTN DataSize = sizeof (FlashlessBootImageAddr);
 
   DEBUG ((EFI_D_INFO, "Loader Build Info: %a %a\n", __DATE__, __TIME__));
   DEBUG ((EFI_D_VERBOSE, "LinuxLoader Load Address to debug ABL: 0x%llx\n",
@@ -170,6 +173,15 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
   StackGuardChkSetup ();
 
   BootStatsSetTimeStamp (BS_BL_START);
+
+  Status = gRT->GetVariable ((CHAR16 *)L"BootImageAddress", &gQcomTokenSpaceGuid,
+				NULL, &DataSize, &FlashlessBootImageAddr);
+  if (Status == EFI_SUCCESS) {
+    FlashlessBoot = TRUE;
+    /* In flashless boot avoid all access to secondary storage during boot
+     */
+    goto flashless_boot;
+  }
 
   // Initialize verified boot & Read Device Info
   Status = DeviceInfoInit ();
@@ -263,6 +275,7 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
   if (Status != EFI_SUCCESS)
     DEBUG ((EFI_D_VERBOSE, "RecoveryInit failed ignore: %r\n", Status));
 
+flashless_boot:
   /* Populate board data required for fastboot, dtb selection and cmd line */
   Status = BoardInit ();
   if (Status != EFI_SUCCESS) {
@@ -287,6 +300,7 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
     Info.MultiSlotBoot = MultiSlotBoot;
     Info.BootIntoRecovery = BootIntoRecovery;
     Info.BootReasonAlarm = BootReasonAlarm;
+    Info.FlashlessBoot = FlashlessBoot;
     Status = LoadImageAndAuth (&Info);
     if (Status != EFI_SUCCESS) {
       DEBUG ((EFI_D_ERROR, "LoadImageAndAuth failed: %r\n", Status));
@@ -297,6 +311,10 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
   }
 
 fastboot:
+  if (FlashlessBoot) {
+    DEBUG ((EFI_D_INFO, "No fastboot support for flashless chipsets, Infinte loop\n"));
+    while(1);
+  }
   DEBUG ((EFI_D_INFO, "Launching fastboot\n"));
   Status = FastbootInitialize ();
   if (EFI_ERROR (Status)) {

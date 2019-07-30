@@ -288,25 +288,32 @@ STATIC VOID GetDisplayCmdline (VOID)
  * Returns length = 0 when there is failure.
  */
 UINT32
-GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
+GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot, BOOLEAN FlashlessBoot,
                BOOLEAN BootIntoRecovery, CHAR16 *ReqPartition, CHAR8 *Key)
 {
   INT32 Index;
   UINT32 Lun;
   CHAR16 PartitionName[MAX_GPT_NAME_SIZE];
-  Slot CurSlot = GetCurrentSlotSuffix ();
+  Slot CurSlot;
   CHAR8 LunCharMapping[] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
   CHAR8 RootDevStr[BOOT_DEV_NAME_SIZE_MAX];
-
-  if (ReqPartition == NULL ||
-      Key == NULL) {
-    DEBUG ((EFI_D_ERROR, "Invalid parameters: NULL\n"));
-    return 0;
-  }
 
   *SysPath = AllocateZeroPool (sizeof (CHAR8) * MAX_PATH_SIZE);
   if (!*SysPath) {
     DEBUG ((EFI_D_ERROR, "Failed to allocated memory for System path query\n"));
+    return 0;
+  }
+
+  if (FlashlessBoot) {
+     AsciiSPrint (*SysPath, MAX_PATH_SIZE, " rootfstype=squashfs root=/dev/ram0");
+     return AsciiStrLen (*SysPath);
+  }
+
+  if (ReqPartition == NULL ||
+      Key == NULL) {
+    DEBUG ((EFI_D_ERROR, "Invalid parameters: NULL\n"));
+    FreePool(*SysPath);
+    *SysPath = NULL;
     return 0;
   }
 
@@ -321,6 +328,7 @@ GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
 
   /* Append slot info for A/B Variant */
   if (MultiSlotBoot) {
+     CurSlot = GetCurrentSlotSuffix ();
      StrnCatS (PartitionName, MAX_GPT_NAME_SIZE, CurSlot.Suffix,
             StrLen (CurSlot.Suffix));
   }
@@ -541,6 +549,7 @@ EFI_STATUS
 UpdateCmdLine (CONST CHAR8 *CmdLine,
                CHAR8 *FfbmStr,
                BOOLEAN Recovery,
+	       BOOLEAN FlashlessBoot,
                BOOLEAN AlarmBoot,
                CONST CHAR8 *VBCmdLine,
                CHAR8 **FinalCmdLine)
@@ -565,12 +574,16 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   CHAR8 *LEVerityCmdLine = NULL;
   UINT32 LEVerityCmdLineLen = 0;
 
+  if (FlashlessBoot)
+    goto skip_BoardSerialNum;
+
   Status = BoardSerialNum (StrSerialNum, sizeof (StrSerialNum));
   if (Status != EFI_SUCCESS) {
     DEBUG ((EFI_D_ERROR, "Error Finding board serial num: %x\n", Status));
     return Status;
   }
 
+skip_BoardSerialNum:
   if (CmdLine && CmdLine[0]) {
     CmdLineLen = AsciiStrLen (CmdLine);
     HaveCmdLine = 1;
@@ -702,6 +715,7 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   if (IsVmEnabled ()) {
     CmdLineLen += GetSystemPath (&CvmSystemPtnCmdLine,
                                  MultiSlotBoot,
+				 FlashlessBoot,
                                  Recovery,
                                  (CHAR16 *)L"vm-system",
                                  (CHAR8 *)"vm_system");
