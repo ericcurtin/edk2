@@ -103,6 +103,7 @@ STATIC FASTBOOT_VAR *Varlist;
 STATIC BOOLEAN Finished = FALSE;
 STATIC CHAR8 StrSerialNum[MAX_RSP_SIZE];
 STATIC CHAR8 FullProduct[MAX_RSP_SIZE];
+STATIC CHAR8 PlatformVersion[MAX_RSP_SIZE];
 STATIC CHAR8 StrVariant[MAX_RSP_SIZE];
 STATIC CHAR8 StrBatteryVoltage[MAX_RSP_SIZE];
 STATIC CHAR8 StrBatterySocOk[MAX_RSP_SIZE];
@@ -3355,6 +3356,8 @@ FastbootCommandSetup (IN VOID *Base, IN UINT64 Size)
 
   AsciiSPrint (FullProduct, sizeof (FullProduct), "%a", PRODUCT_NAME);
   FastbootPublishVar ("product", FullProduct);
+  AsciiSPrint (PlatformVersion, sizeof (PlatformVersion), "%d", ANDROID_PLATFORM_VERSION);
+  FastbootPublishVar ("android-platform-version", PlatformVersion);
   FastbootPublishVar ("serialno", StrSerialNum);
   FastbootPublishVar ("secure", IsSecureBootEnabled () ? "yes" : "no");
   if (MultiSlotBoot) {

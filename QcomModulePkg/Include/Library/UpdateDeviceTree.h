@@ -84,6 +84,12 @@ UpdateDeviceTree (VOID *DeviceTreeLoadAddr,
 EFI_STATUS
 UpdateFstabNode (VOID *fdt);
 
+EFI_STATUS
+UpdateVbmetaNode (VOID *fdt,
+                  CHAR8 *OldProperty,
+                  CHAR8 *NewProperty);
+
 UINT32
 fdt_check_header_ext (VOID *fdt);
+
 #endif

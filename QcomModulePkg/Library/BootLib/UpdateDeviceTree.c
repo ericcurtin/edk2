@@ -34,6 +34,7 @@
 #include "UpdateDeviceTree.h"
 #include "AutoGen.h"
 #include <Library/UpdateDeviceTree.h>
+#include <Library/PartitionTableUpdate.h>
 #include <Library/LocateDeviceTree.h>
 #include <Library/BootLinux.h>
 #include <Protocol/EFIChipInfoTypes.h>
@@ -49,6 +50,9 @@ STATIC struct FstabNode FstabTable = {"/firmware/android/fstab", "dev",
 STATIC struct FstabNode DynamicFstabTable = {"/firmware/android/fstab",
                                               "status",
                                               ""};
+STATIC struct FstabNode VbmetaTable = {"/firmware/android/vbmeta", "parts",
+                                      ""};
+
 STATIC struct DisplaySplashBufferInfo splashBuf;
 STATIC UINTN splashBufSize = sizeof (splashBuf);
 
@@ -587,6 +591,12 @@ UpdateDeviceTree (VOID *fdt,
     }
   }
 
+  /* Update vbmeta node for PLATFORM_VERSION < 10 */
+  if ((ANDROID_PLATFORM_VERSION) &&
+      (ANDROID_PLATFORM_VERSION < 10)){
+    DEBUG ((EFI_D_ERROR, "Removing the ODM partition from DT.\n"));
+    UpdateVbmetaNode (fdt, "odm", NULL);
+  }
   /* Update fstab node */
   DEBUG ((EFI_D_VERBOSE, "Start DT fstab node update: %lu ms\n",
           GetTimerCountms ()));
@@ -607,6 +617,123 @@ UpdateDeviceTree (VOID *fdt,
   fdt_pack (fdt);
 
   return ret;
+}
+
+/* Update device tree for vbmeta node */
+EFI_STATUS
+UpdateVbmetaNode (VOID *fdt,
+                  CHAR8* OldPartStr,
+                  CHAR8* NewPartStr)
+{
+  INT32 ParentOffset = 0;
+  INT32 NodeOffset = 0;
+  CONST struct fdt_property *Prop = NULL;
+  INT32 PropLen = 0;
+  char *NodeName = NULL;
+  EFI_STATUS Status = EFI_SUCCESS;
+  CHAR8 *RestParts = NULL;
+  CHAR8 *ReplaceStr = NULL;
+  CHAR8 *PartitionString = NULL;
+  struct FstabNode Table = VbmetaTable;
+  struct FstabNode FsTable = FstabTable;
+  CHAR8 TempPartition[MAX_PARTITION_NAME_LEN];
+
+  PartitionString = AllocateZeroPool (sizeof (CHAR8) * MAX_PARTITION_NAME_LEN * MAX_NUM_PARTITIONS);
+  if (PartitionString == NULL) {
+    DEBUG ((EFI_D_ERROR, "Boot device buffer: Out of resources\n"));
+    Status = EFI_OUT_OF_RESOURCES;
+    goto error;
+  }
+
+  /* Find the parent node */
+  ParentOffset = fdt_path_offset (fdt, Table.ParentNode);
+  if (ParentOffset < 0) {
+    DEBUG ((EFI_D_ERROR, "Failed to Get parent node: fstab\terror: %d\n",
+            ParentOffset));
+    Status = EFI_NOT_FOUND;
+    goto error;
+  }
+  DEBUG ((EFI_D_INFO, "Node: %a found.\n",
+          fdt_get_name (fdt, ParentOffset, NULL)));
+
+  Prop = fdt_get_property (fdt, ParentOffset, Table.Property, &PropLen);
+  NodeName = (char *)(uintptr_t)fdt_get_name (fdt, ParentOffset, NULL);
+  if (!Prop) {
+    DEBUG ((EFI_D_ERROR, "Property:%a is not found for sub-node:%a\n",
+            Table.Property, NodeName));
+    Status = EFI_NOT_FOUND;
+    goto error;
+  } else {
+    /*Populate the PartitionString with Prop->data*/
+    gBS->CopyMem(PartitionString,(CHAR8 *)Prop->data,AsciiStrLen(Prop->data));
+
+    RestParts = (CHAR8 *)PartitionString;
+    ReplaceStr = AsciiStrStr (RestParts, OldPartStr);
+    if (!ReplaceStr){
+      DEBUG ((EFI_D_ERROR, "Unable to find the %a partition\n",OldPartStr));
+      Status = EFI_NOT_FOUND;
+      goto error;
+    }
+
+    RestParts = AsciiStrStr (ReplaceStr, ",");
+    if (RestParts){
+      RestParts++;
+      gBS->CopyMem (ReplaceStr, RestParts, AsciiStrLen(RestParts));
+      ReplaceStr = ReplaceStr + AsciiStrLen(RestParts);
+    }
+
+    if (NewPartStr){
+      if (RestParts)
+        AsciiSPrint(TempPartition, MAX_PARTITION_NAME_LEN, ",%a",NewPartStr);
+      else
+        AsciiSPrint(TempPartition, MAX_PARTITION_NAME_LEN, "%a",NewPartStr);
+
+      gBS->CopyMem(ReplaceStr, TempPartition, AsciiStrLen(TempPartition));
+      ReplaceStr = ReplaceStr+AsciiStrLen(TempPartition);
+    }
+    /*This case is for extra ','*/
+    if (!NewPartStr && !RestParts)
+      ReplaceStr = ReplaceStr-1;
+
+    *ReplaceStr = '\0';
+
+    Status = fdt_setprop_string(fdt,
+		         ParentOffset,
+			 Table.Property,
+			 (CHAR8 *)PartitionString);
+
+    if(Status){
+      DEBUG ((EFI_D_ERROR, "Unable to set property: %a\n",Table.Property));
+      Status = EFI_NOT_FOUND;
+      goto error;
+    }
+    Prop = fdt_get_property (fdt, ParentOffset, Table.Property, &PropLen);
+    NodeName = (char *)(uintptr_t)fdt_get_name (fdt, ParentOffset, NULL);
+
+    DEBUG ((EFI_D_VERBOSE, "Property:%a found for sub-node:%a\tProperty:%a\n",Table.Property, NodeName, Prop->data));
+
+    AsciiSPrint(TempPartition, MAX_PARTITION_NAME_LEN, "%a/%a",FsTable.ParentNode,OldPartStr);
+    /* Get the Odm Node Offset */
+    NodeOffset = fdt_path_offset (fdt, TempPartition);
+    if(NodeOffset < 0){
+      DEBUG ((EFI_D_ERROR, "Failed to Get parent node: %a\terror: %d\n",
+              OldPartStr, ParentOffset));
+      Status = EFI_NOT_FOUND;
+      goto error;
+    }
+    /*Remove the Partition Node */
+    Status = fdt_del_node(fdt, NodeOffset);
+    if(Status){
+      DEBUG ((EFI_D_ERROR, "fdt_del_node(OldPartStr): %s\n",fdt_strerror(Status)));
+      goto error;
+    }
+  }
+error:
+  if (PartitionString){
+    FreePool (PartitionString);
+    PartitionString = NULL;
+  }
+  return Status;
 }
 
 /* Update device tree for fstab node */
