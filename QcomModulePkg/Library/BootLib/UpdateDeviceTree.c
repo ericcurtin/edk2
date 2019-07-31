@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -34,16 +34,21 @@
 #include "UpdateDeviceTree.h"
 #include "AutoGen.h"
 #include <Library/UpdateDeviceTree.h>
+#include <Library/LocateDeviceTree.h>
+#include <Library/BootLinux.h>
 #include <Protocol/EFIChipInfoTypes.h>
 #include <Protocol/EFIDDRGetConfig.h>
 #include <Protocol/EFIRng.h>
+#include <Library/PartialGoods.h>
 
-#define DTB_PAD_SIZE 2048
 #define NUM_SPLASHMEM_PROP_ELEM 4
 #define DEFAULT_CELL_SIZE 2
 
 STATIC struct FstabNode FstabTable = {"/firmware/android/fstab", "dev",
                                       "/soc/"};
+STATIC struct FstabNode DynamicFstabTable = {"/firmware/android/fstab",
+                                              "status",
+                                              ""};
 STATIC struct DisplaySplashBufferInfo splashBuf;
 STATIC UINTN splashBufSize = sizeof (splashBuf);
 
@@ -74,14 +79,15 @@ GetDDRInfo (UINT8 *DdrDeviceType)
                                 (VOID **)&DdrInfoIf);
   if (Status != EFI_SUCCESS) {
     DEBUG ((EFI_D_VERBOSE,
-            "Error locating DDR Info protocol. Fail to get DDR type:%r\n",
+            "INFO: Unable to get DDR Info protocol. DDR type not updated:%r\n",
             Status));
     return Status;
   }
 
   Status = DdrInfoIf->GetDDRDetails (DdrInfoIf, &DdrInfo);
   if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "GetDDR details failed\n"));
+    DEBUG ((EFI_D_ERROR, "INFO: GetDDR details failed\n"));
+    return Status;
   }
 
   *DdrDeviceType = DdrInfo.device_type;
@@ -246,23 +252,23 @@ UpdateGranuleInfo (VOID *fdt)
   UINT32 GranuleSize;
   INT32 Ret;
 
-  GranuleNodeOffset = fdt_path_offset (fdt, "/mem-offline");
-  if (GranuleNodeOffset < 0) {
-    DEBUG ((EFI_D_ERROR, "WARNING: Could not find mem-offline node.\n"));
+  Status = GetGranuleSize (&GranuleSize);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((EFI_D_VERBOSE,
+            "Unable to get Granule Size, Status = %r\r\n",
+            Status));
     return;
   }
 
-  Status = GetGranuleSize (&GranuleSize);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR,
-            "Update Granule Size failed!!! Status = %r\r\n",
-            Status));
+  GranuleNodeOffset = fdt_path_offset (fdt, "/mem-offline");
+  if (GranuleNodeOffset < 0) {
+    DEBUG ((EFI_D_VERBOSE, "INFO: Could not find mem-offline node.\n"));
     return;
   }
 
   Ret = fdt_setprop_u32 (fdt, GranuleNodeOffset, "granule", GranuleSize);
   if (Ret) {
-    DEBUG ((EFI_D_ERROR, "WARNING: Granule size update failed.\n"));
+    DEBUG ((EFI_D_ERROR, "INFO: Granule size update failed.\n"));
   }
 }
 
@@ -522,9 +528,6 @@ UpdateDeviceTree (VOID *fdt,
     } else {
       DEBUG ((EFI_D_VERBOSE, "ddr_device_type is added to memory node\n"));
     }
-  } else {
-    DEBUG (
-        (EFI_D_ERROR, "ERROR: Cannot update ddr_device_type - %r\n", Status));
   }
 
   UpdateSplashMemInfo (fdt);
@@ -591,6 +594,16 @@ UpdateDeviceTree (VOID *fdt,
   DEBUG ((EFI_D_VERBOSE, "End DT fstab node update: %lu ms\n",
           GetTimerCountms ()));
 
+  /* Check partial goods*/
+  if (FixedPcdGetBool (EnablePartialGoods)) {
+    ret = UpdatePartialGoodsNode (fdt);
+    if (ret != EFI_SUCCESS) {
+      DEBUG ((EFI_D_ERROR,
+        "Failed to update device tree for partial goods, Status=%r\n",
+           ret));
+      return ret;
+    }
+  }
   fdt_pack (fdt);
 
   return ret;
@@ -609,7 +622,8 @@ UpdateFstabNode (VOID *fdt)
   CHAR8 *BootDevBuf = NULL;
   CHAR8 *ReplaceStr = NULL;
   CHAR8 *NextStr = NULL;
-  struct FstabNode Table = FstabTable;
+  struct FstabNode Table = IsDynamicPartitionSupport () ? DynamicFstabTable
+                                                         : FstabTable;
   UINT32 DevNodeBootDevLen = 0;
   UINT32 Index = 0;
   UINT32 PaddingEnd = 0;
@@ -624,19 +638,21 @@ UpdateFstabNode (VOID *fdt)
   DEBUG ((EFI_D_VERBOSE, "Node: %a found.\n",
           fdt_get_name (fdt, ParentOffset, NULL)));
 
-  /* Get boot device type */
-  BootDevBuf = AllocateZeroPool (sizeof (CHAR8) * BOOT_DEV_MAX_LEN);
-  if (BootDevBuf == NULL) {
-    DEBUG ((EFI_D_ERROR, "Boot device buffer: Out of resources\n"));
-    return EFI_OUT_OF_RESOURCES;
-  }
+  if (!IsDynamicPartitionSupport ()) {
+    /* Get boot device type */
+    BootDevBuf = AllocateZeroPool (sizeof (CHAR8) * BOOT_DEV_MAX_LEN);
+    if (BootDevBuf == NULL) {
+     DEBUG ((EFI_D_ERROR, "Boot device buffer: Out of resources\n"));
+     return EFI_OUT_OF_RESOURCES;
+    }
 
-  Status = GetBootDevice (BootDevBuf, BOOT_DEV_MAX_LEN);
-  if (Status != EFI_SUCCESS) {
-    DEBUG ((EFI_D_ERROR, "Failed to get Boot Device: %r\n", Status));
-    FreePool (BootDevBuf);
-    BootDevBuf = NULL;
-    return Status;
+    Status = GetBootDevice (BootDevBuf, BOOT_DEV_MAX_LEN);
+    if (Status != EFI_SUCCESS) {
+      DEBUG ((EFI_D_ERROR, "Failed to get Boot Device: %r\n", Status));
+      FreePool (BootDevBuf);
+      BootDevBuf = NULL;
+      return Status;
+    }
   }
 
   /* Get properties of all sub nodes */
@@ -651,6 +667,17 @@ UpdateFstabNode (VOID *fdt)
     } else {
       DEBUG ((EFI_D_VERBOSE, "Property:%a found for sub-node:%a\tProperty:%a\n",
               Table.Property, NodeName, Prop->data));
+
+      /* For Dynamic partition support disable firmware fstab nodes. */
+      if (IsDynamicPartitionSupport ()) {
+        DEBUG ((EFI_D_VERBOSE, "Disabling node status :%a\n", NodeName));
+        Status = fdt_setprop (fdt, SubNodeOffset, Table.Property, "disabled",
+                             (AsciiStrLen ("disabled") + 1));
+        if (Status) {
+         DEBUG ((EFI_D_ERROR, "ERROR: Failed to disable Node: %a\n", NodeName));
+        }
+        continue;
+      }
 
       /* Pointer to fdt 'dev' property string that needs to update based on the
        * 'androidboot.bootdevice' */
@@ -685,7 +712,9 @@ UpdateFstabNode (VOID *fdt)
     }
   }
 
-  FreePool (BootDevBuf);
+  if (BootDevBuf) {
+    FreePool (BootDevBuf);
+  }
   BootDevBuf = NULL;
   return Status;
 }
