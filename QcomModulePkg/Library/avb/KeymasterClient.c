@@ -48,7 +48,6 @@ typedef struct {
 #define KEYMASTER_CMD_ID 0x100UL
 #define KEYMASTER_UTILS_CMD_ID 0x200UL
 #define GK_CMD_ID 0x1000UL
-#define TZ_FVER_QSEE 10 /**< QSEE application layer. */
 
 typedef enum {
   /*
@@ -87,6 +86,7 @@ typedef enum {
   KEYMASTER_SET_BOOT_STATE = (KEYMASTER_UTILS_CMD_ID + 8UL),
   KEYMASTER_PROVISION_ATTEST_KEY = (KEYMASTER_UTILS_CMD_ID + 9UL),
   KEYMASTER_SET_VBH = (KEYMASTER_UTILS_CMD_ID + 17UL),
+  KEYMASTER_GET_DATE_SUPPORT = (KEYMASTER_UTILS_CMD_ID + 21UL),
 
   KEYMASTER_LAST_CMD_ENTRY = (int)0xFFFFFFFFULL
 } KeyMasterCmd;
@@ -149,6 +149,14 @@ typedef struct
   INT32 Status;
 } __attribute__ ((packed)) KMSetVbhRsp;
 
+typedef struct {
+  UINT32 CmdId;
+} __attribute__ ((packed)) KMGetDateSupportReq;
+
+typedef struct {
+  INT32 Status;
+} __attribute__ ((packed)) KMGetDateSupportRsp;
+
 EFI_STATUS
 KeyMasterStartApp (KMHandle *Handle)
 {
@@ -208,7 +216,6 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   KMSetBootStateReq BootStateReq = {0};
   KMSetBootStateRsp BootStateRsp = {0};
   BOOLEAN secure_device = FALSE;
-  UINT32 version = 0;
 
   if (BootState == NULL) {
     DEBUG ((EFI_D_ERROR, "Invalid parameter BootState\n"));
@@ -302,14 +309,7 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
   /* Provide boot tamper state to TZ */
   if (((Status = IsSecureDevice (&secure_device)) == EFI_SUCCESS) &&
       secure_device && (BootState->Color != GREEN)) {
-
-    Status = ScmGetFeatureVersion (TZ_FVER_QSEE, &version);
-    if (Status != EFI_SUCCESS) {
-      DEBUG ((EFI_D_ERROR,
-              "KeyMasterSetRotAndBootState: ScmGetFeatureVersion fails!\n"));
-      return Status;
-    }
-    if (AllowSetFuse (version)) {
+    if (AllowSetFuse ()) {
       Status = SetFuse (TZ_HLOS_IMG_TAMPER_FUSE);
       if (Status != EFI_SUCCESS) {
         DEBUG ((EFI_D_ERROR, "KeyMasterSetRotAndBootState: "
@@ -322,15 +322,8 @@ KeyMasterSetRotAndBootState (KMRotAndBootState *BootState)
                              "SetFuse (TZ_HLOS_TAMPER_NOTIFY_FUSE) fails!\n"));
         return Status;
       }
-    } else {
-      DEBUG ((EFI_D_ERROR, "TZ didn't support this feature! "
-                           "Version: major = %d, minor = %d, patch = %d\n",
-              (version >> 22) & 0x3FF, (version >> 12) & 0x3FF,
-              version & 0x3FF));
-      return Status;
     }
   }
-
   DEBUG ((EFI_D_VERBOSE, "KeyMasterSetRotAndBootState success\n"));
   return Status;
 }
@@ -370,4 +363,35 @@ SetVerifiedBootHash (CONST CHAR8 *Vbh, UINTN VbhSize)
     return EFI_LOAD_ERROR;
   }
   return EFI_SUCCESS;
+}
+
+EFI_STATUS
+KeyMasterGetDateSupport (BOOLEAN *Supported)
+{
+  EFI_STATUS Status = EFI_SUCCESS;
+  KMGetDateSupportReq Req = {0};
+  KMGetDateSupportRsp Rsp = {0};
+  KMHandle Handle = {NULL};
+
+  GUARD (KeyMasterStartApp (&Handle));
+  Req.CmdId = KEYMASTER_GET_DATE_SUPPORT;
+  Status = Handle.QseeComProtocol->QseecomSendCmd (
+      Handle.QseeComProtocol, Handle.AppId, (UINT8 *)&Req, sizeof (Req),
+      (UINT8 *)&Rsp, sizeof (Rsp));
+  if (Status != EFI_SUCCESS ||
+                Rsp.Status != 0 ) {
+    DEBUG ((EFI_D_ERROR, "Keymaster: Get date support error, status: "
+                         "%d, response status: %d\n",
+            Status, Rsp.Status));
+    if (Status == EFI_SUCCESS &&
+                Rsp.Status == KM_ERROR_INVALID_TAG) {
+      DEBUG ((EFI_D_ERROR, "Date in patch level not supported in keymaster\n"));
+      *Supported = FALSE;
+      return EFI_SUCCESS;
+    }
+    return EFI_LOAD_ERROR;
+  }
+
+  *Supported = TRUE;
+  return Status;
 }

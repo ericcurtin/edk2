@@ -43,6 +43,7 @@ STATIC CONST CHAR8 *DmVerityCmd = " root=/dev/dm-0 dm=\"system none ro,0 1 "
 STATIC CONST CHAR8 *Space = " ";
 
 #define MAX_NUM_REQ_PARTITION    8
+#define MAX_PROPERTY_SIZE        10
 
 static CHAR8 *avb_verify_partition_name[] = {
      "boot",
@@ -795,6 +796,43 @@ ComputeVbMetaDigest (AvbSlotVerifyData* SlotData, CHAR8* Digest) {
   avb_memcpy (Digest, avb_sha256_final(&Ctx), AVB_SHA256_DIGEST_SIZE);
 }
 
+static UINT32 ParseBootSecurityLevel (CONST CHAR8 *BootSecurityLevel,
+                                      size_t BootSecurityLevelSize)
+{
+  UINT32 PatchLevelDate = 0;
+  UINT32 PatchLevelMonth = 0;
+  UINT32 PatchLevelYear = 0;
+  UINT32 SeparatorCount = 0;
+  UINT32 Count = 0;
+
+  /*Parse the value of security patch as per YYYY-MM-DD format*/
+  while (Count < BootSecurityLevelSize) {
+    if (BootSecurityLevel[Count] == '-') {
+      SeparatorCount++;
+    }
+    else if (SeparatorCount == 2) {
+      PatchLevelDate *= 10;
+      PatchLevelDate += (BootSecurityLevel[Count] - '0');
+    }
+    else if (SeparatorCount == 1) {
+      PatchLevelMonth *= 10;
+      PatchLevelMonth += (BootSecurityLevel[Count] - '0');
+    }
+    else if (SeparatorCount == 0) {
+      PatchLevelYear *= 10;
+      PatchLevelYear += (BootSecurityLevel[Count] - '0');
+    }
+    else {
+      return -1;
+    }
+    Count++;
+  }
+
+  PatchLevelDate = PatchLevelDate << 11;
+  PatchLevelYear = (PatchLevelYear - 2000) << 4;
+  return (PatchLevelDate | PatchLevelYear | PatchLevelMonth);
+}
+
 STATIC EFI_STATUS
 LoadImageAndAuthVB2 (BootInfo *Info)
 {
@@ -817,6 +855,9 @@ LoadImageAndAuthVB2 (BootInfo *Info)
   VOID *ImageBuffer = NULL;
   UINTN ImageSize = 0;
   KMRotAndBootState Data = {0};
+  CONST CHAR8 *BootSecurityLevel = NULL;
+  size_t BootSecurityLevelSize = 0;
+  BOOLEAN DateSupport = FALSE;
   CONST boot_img_hdr *BootImgHdr = NULL;
   AvbSlotVerifyFlags VerifyFlags =
       AllowVerificationError ? AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR
@@ -824,6 +865,7 @@ LoadImageAndAuthVB2 (BootInfo *Info)
   AvbHashtreeErrorMode VerityFlags =
       AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE;
   CHAR8 Digest[AVB_SHA256_DIGEST_SIZE];
+  BOOLEAN UpdateRollback = FALSE;
 
   Info->BootState = RED;
   GUARD (VBCommonInit (Info));
@@ -854,6 +896,22 @@ LoadImageAndAuthVB2 (BootInfo *Info)
     SlotSuffix = &PnameAscii[AsciiStrLen (PnameAscii) - MAX_SLOT_SUFFIX_SZ + 1];
   } else {
      SlotSuffix = "\0";
+  }
+
+  /* Check if slot is bootable and call into TZ to update rollback version.
+   * This is similar to the update done later for vbmeta bound images.
+   * However, here we call into TZ irrespective of version check and let
+   * the secure environment make the decision on updating rollback version
+   */
+
+  UpdateRollback = avb_should_update_rollback (UserData->IsMultiSlot);
+  if (UpdateRollback) {
+    Status = UpdateRollbackSyscall ();
+    if (Status != EFI_SUCCESS) {
+      DEBUG ((EFI_D_ERROR, "LoadImageAndAuthVB2: Error int TZ Rollback Version "
+               "syscall; ScmCall Status: (0x%x)\r\n", Status));
+      return Status;
+    }
   }
 
   DEBUG ((EFI_D_VERBOSE, "Slot: %a, allow verification error: %a\n", SlotSuffix,
@@ -1042,7 +1100,36 @@ LoadImageAndAuthVB2 (BootInfo *Info)
   Data.PublicKey = UserData->PublicKey;
 
   BootImgHdr = (boot_img_hdr *)ImageBuffer;
-  Data.SystemSecurityLevel = (BootImgHdr->os_version & 0x7FF);
+  GUARD_OUT (KeyMasterGetDateSupport (&DateSupport));
+
+  /* Send date value in security patch only when KM TA supports it and the
+   * property is available in vbmeta data, send the old value in other cases
+  */
+  if (DateSupport) {
+    DEBUG ((EFI_D_INFO, "DateSupport: %d\n", DateSupport));
+    BootSecurityLevel = avb_property_lookup (
+                           SlotData->vbmeta_images[0].vbmeta_data,
+                           SlotData->vbmeta_images[0].vbmeta_size,
+                           "com.android.build.boot.security_patch",
+                           0, &BootSecurityLevelSize);
+
+    if (BootSecurityLevel != NULL &&
+        BootSecurityLevelSize == MAX_PROPERTY_SIZE) {
+      Data.SystemSecurityLevel = ParseBootSecurityLevel (BootSecurityLevel,
+                                                         BootSecurityLevelSize);
+      if (Data.SystemSecurityLevel < 0) {
+        DEBUG ((EFI_D_ERROR, "System security patch level format invalid\n"));
+        Status = EFI_INVALID_PARAMETER;
+        goto out;
+      }
+    }
+    else {
+      Data.SystemSecurityLevel = (BootImgHdr->os_version & 0x7FF);
+    }
+  }
+  else {
+    Data.SystemSecurityLevel = (BootImgHdr->os_version & 0x7FF);
+  }
   Data.SystemVersion = (BootImgHdr->os_version & 0xFFFFF800) >> 11;
 
   GUARD_OUT (KeyMasterSetRotAndBootState (&Data));

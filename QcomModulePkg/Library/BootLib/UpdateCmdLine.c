@@ -77,6 +77,7 @@ STATIC UINTN DisplayCmdLineLen = sizeof (DisplayCmdLine);
 
 #define MAX_DTBO_IDX_STR 64
 STATIC CHAR8 *AndroidBootDtboIdx = " androidboot.dtbo_idx=";
+STATIC CHAR8 *AndroidBootDtbIdx = " androidboot.dtb_idx=";
 
 STATIC EFI_STATUS
 TargetPauseForBatteryCharge (BOOLEAN *BatteryStatus)
@@ -346,10 +347,19 @@ GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
     /* NAND is being treated as GPT partition, hence reduce the index by 1 as
      * PartitionIndex (0) should be ignored for correct mapping of partition.
      */
-    AsciiSPrint (*SysPath,
-          MAX_PATH_SIZE,
+    if (IsNANDSquashFsSupport ()) {
+      // The gluebi device that is to be passed to "root=" will be the first one
+      // after all "regular" mtd devices have been populated.
+      UINT32 PartitionCount = 0;
+      GetPartitionCount (&PartitionCount);
+      AsciiSPrint (*SysPath, MAX_PATH_SIZE,
+                   " rootfstype=squashfs root=/dev/mtdblock%d ubi.mtd=%d",
+                   (PartitionCount - 1), (Index - 1));
+    } else {
+      AsciiSPrint (*SysPath, MAX_PATH_SIZE,
           " rootfstype=ubifs rootflags=bulk_read root=ubi0:rootfs ubi.mtd=%d",
           (Index - 1));
+    }
   } else if (!AsciiStrCmp ("UFS", RootDevStr)) {
     AsciiSPrint (*SysPath, MAX_PATH_SIZE,
                  " %a=/dev/sd%c%d",
@@ -495,6 +505,11 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
+  if (Param->DtbIdxStr != NULL) {
+    Src = Param->DtbIdxStr;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
   if (Param->LEVerityCmdLine != NULL) {
     Src = Param->LEVerityCmdLine;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
@@ -544,7 +559,9 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   CHAR8 *CvmSystemPtnCmdLine = NULL;
   UpdateCmdLineParamList Param = {0};
   CHAR8 DtboIdxStr[MAX_DTBO_IDX_STR] = "\0";
+  CHAR8 DtbIdxStr[MAX_DTBO_IDX_STR] = "\0";
   INT32 DtboIdx = INVALID_PTN;
+  INT32 DtbIdx = INVALID_PTN;
   CHAR8 *LEVerityCmdLine = NULL;
   UINT32 LEVerityCmdLineLen = 0;
 
@@ -668,8 +685,15 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
     DtboIdx = GetDtboIdx ();
     if (DtboIdx != INVALID_PTN) {
       AsciiSPrint (DtboIdxStr, sizeof (DtboIdxStr),
-                   " %a%d", AndroidBootDtboIdx, DtboIdx);
+                   "%a%d", AndroidBootDtboIdx, DtboIdx);
       CmdLineLen += AsciiStrLen (DtboIdxStr);
+    }
+
+    DtbIdx = GetDtbIdx ();
+    if (DtbIdx != INVALID_PTN) {
+      AsciiSPrint (DtbIdxStr, sizeof (DtbIdxStr),
+                   "%a%d", AndroidBootDtbIdx, DtbIdx);
+      CmdLineLen += AsciiStrLen (DtbIdxStr);
     }
   }
   /* 1 extra byte for NULL */
@@ -719,6 +743,7 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   Param.RootCmdLine = RootCmdLine;
   Param.InitCmdline = InitCmdline;
   Param.DtboIdxStr = DtboIdxStr;
+  Param.DtbIdxStr = DtbIdxStr;
   Param.LEVerityCmdLine = LEVerityCmdLine;
   Param.CvmSystemPtnCmdLine = CvmSystemPtnCmdLine;
 

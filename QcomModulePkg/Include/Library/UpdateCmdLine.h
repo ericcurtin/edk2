@@ -78,6 +78,7 @@ typedef struct UpdateCmdLineParamList {
   CHAR8 *RootCmdLine;
   CHAR8 *InitCmdline;
   CHAR8 *DtboIdxStr;
+  CHAR8 *DtbIdxStr;
   CHAR8 *LEVerityCmdLine;
   CHAR8 *CvmSystemPtnCmdLine;
   CHAR8 *EarlyIPv4CmdLine;

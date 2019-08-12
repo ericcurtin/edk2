@@ -56,7 +56,7 @@
 #define DTB_MAGIC 0xedfe0dd0
 #define DTB_OFFSET 0X2C
 
-#define DTB_PAD_SIZE 1024
+#define DTB_PAD_SIZE 2048
 #define DTBO_TABLE_MAGIC 0xD7B7AB1E
 #define DTBO_CUSTOM_MAX 4
 #define PLATFORM_FOUNDRY_SHIFT 16
@@ -157,6 +157,7 @@ struct dt_entry {
   UINT32 pmic_rev[4];
   UINT64 offset;
   UINT32 size;
+  UINT32 Idx;
 };
 
 /*Struct def for device tree entry*/
@@ -272,6 +273,7 @@ DeviceTreeValidate (UINT8 *DeviceTreeBuff,
                     UINT32 PageSize,
                     UINT32 *DeviceTreeSize);
 INT32 GetDtboIdx (VOID);
+INT32 GetDtbIdx (VOID);
 VOID DeleteDtList (struct fdt_entry_node** DtList);
 BOOLEAN AppendToDtList (struct fdt_entry_node **DtList,
                 UINT64 Address,
