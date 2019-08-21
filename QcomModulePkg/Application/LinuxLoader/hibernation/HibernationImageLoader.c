@@ -332,11 +332,14 @@ static int get_uefi_memory_map(void)
 	return 0;
 }
 
-static int read_image(unsigned long offset, VOID *Buff, int nr_pages) {
+static int read_image(unsigned long offset, VOID *Buff, int nr_pages)
+{
 
 	int Status;
 	EFI_BLOCK_IO_PROTOCOL *BlockIo = NULL;
 	EFI_HANDLE *Handle = NULL;
+	EFI_LBA Lba;
+	static int Page2block = NULL;
 
 	Status = PartitionGetInfo (SWAP_PARTITION_NAME, &BlockIo, &Handle);
 	if (Status != EFI_SUCCESS)
@@ -357,12 +360,13 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages) {
 		printf("Integer overflow while multiplying LastBlock and BlockSize\n");
 		return -1;
 	}
+	if (!Page2block)
+		Page2block = EFI_PAGE_SIZE / BlockIo->Media->BlockSize;
 
-	/* Check what is the block size of the mmc and scale the offset accrodingly
-	 * right now blocksize = page_size = 4096 */
+	Lba = offset * Page2block;
 	Status = BlockIo->ReadBlocks (BlockIo,
 			BlockIo->Media->MediaId,
-			offset,
+			Lba,
 			EFI_PAGE_SIZE * nr_pages,
 			(VOID*)Buff);
 	if (Status != EFI_SUCCESS) {
