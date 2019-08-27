@@ -34,6 +34,7 @@
 #include <Library/ShutdownServices.h>
 #include <Library/StackCanary.h>
 #include "Hibernation.h"
+#include "BootStats.h"
 
 #define BUG(fmt, ...) {\
 		printf("Fatal error " fmt, ##__VA_ARGS__);\
