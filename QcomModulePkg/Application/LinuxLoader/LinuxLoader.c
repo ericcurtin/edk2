@@ -207,11 +207,6 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
     goto stack_guard_update_default;
   }
 
-  #if HIBERNATION_SUPPORT
-    if (!BootIntoFastboot)
-      BootIntoHibernationImage();
-  #endif
-
   // check for reboot mode
   Status = GetRebootReason (&BootReason);
   if (Status != EFI_SUCCESS) {
@@ -282,7 +277,12 @@ LinuxLoaderEntry (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
     DEBUG ((EFI_D_ERROR, "VM Hyp calls not present\n"));
   }
 
-  if (!BootIntoFastboot) {
+  if(BootIntoFastboot)
+      goto fastboot;
+  else {
+  #if HIBERNATION_SUPPORT
+      BootIntoHibernationImage();
+  #endif
     BootInfo Info = {0};
     Info.MultiSlotBoot = MultiSlotBoot;
     Info.BootIntoRecovery = BootIntoRecovery;
