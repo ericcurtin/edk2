@@ -339,7 +339,7 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages)
 	EFI_BLOCK_IO_PROTOCOL *BlockIo = NULL;
 	EFI_HANDLE *Handle = NULL;
 	EFI_LBA Lba;
-	static int Page2block = NULL;
+	static int Page2block;
 
 	Status = PartitionGetInfo (SWAP_PARTITION_NAME, &BlockIo, &Handle);
 	if (Status != EFI_SUCCESS)
