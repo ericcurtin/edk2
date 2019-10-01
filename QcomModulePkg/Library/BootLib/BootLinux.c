@@ -1605,6 +1605,18 @@ BOOLEAN IsLEVariant (VOID)
 }
 #endif
 
+#ifdef ENABLE_EARLY_SERVICES
+BOOLEAN EarlyServicesEnabled (VOID)
+{
+  return TRUE;
+}
+#else
+BOOLEAN EarlyServicesEnabled (VOID)
+{
+  return FALSE;
+}
+#endif
+
 #ifdef BUILD_SYSTEM_ROOT_IMAGE
 BOOLEAN IsBuildAsSystemRootImage (VOID)
 {
