@@ -1644,3 +1644,15 @@ BOOLEAN IsNANDSquashFsSupport (VOID)
   return FALSE;
 }
 #endif
+
+#if MTD_UBI_BEB_LIMIT_PER1024
+BOOLEAN IsDefinedMTDUbiBebLimit (VOID)
+{
+  return TRUE;
+}
+#else
+BOOLEAN IsDefinedMTDUbiBebLimit (VOID)
+{
+  return FALSE;
+}
+#endif

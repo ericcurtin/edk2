@@ -363,6 +363,14 @@ GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot, BOOLEAN FlashlessBoot,
       AsciiSPrint (*SysPath, MAX_PATH_SIZE,
                    " rootfstype=squashfs root=/dev/mtdblock%d ubi.mtd=%d",
                    (PartitionCount - 1), (Index - 1));
+    } else if (IsDefinedMTDUbiBebLimit ()) {
+      /* Attach MTD device (Index - 1) using default VID header offset and
+       * reserve MTD_UBI_BEB_LIMIT_PER1024*nand_size_in_blocks/1024 erase blocks
+       * for bad block handling.
+       */
+        AsciiSPrint (*SysPath, MAX_PATH_SIZE,
+            " rootfstype=ubifs rootflags=bulk_read root=ubi0:rootfs ubi.mtd=%d,0,%d",
+            (Index - 1), MTD_UBI_BEB_LIMIT_PER1024);
     } else {
       AsciiSPrint (*SysPath, MAX_PATH_SIZE,
           " rootfstype=ubifs rootflags=bulk_read root=ubi0:rootfs ubi.mtd=%d",

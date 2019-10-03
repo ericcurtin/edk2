@@ -157,6 +157,9 @@
   !if $(NAND_SQUASHFS_SUPPORT)
       GCC:*_*_*_CC_FLAGS = -DNAND_SQUASHFS_SUPPORT
   !endif
+  !ifdef $(MTD_UBI_BEB_LIMIT_PER1024)
+      GCC:*_*_*_CC_FLAGS = -DMTD_UBI_BEB_LIMIT_PER1024=$(MTD_UBI_BEB_LIMIT_PER1024)
+  !endif
 
 [PcdsFixedAtBuild.common]
 
