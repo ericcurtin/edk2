@@ -100,7 +100,7 @@ QueryBootParams (UINT64 *KernelLoadAddr, UINT64 *KernelSizeReserved)
 }
 
 STATIC EFI_STATUS
-UpdateBootParams (BootParamlist *BootParamlistPtr)
+UpdateBootParams (BootParamlist *BootParamlistPtr, BOOLEAN FlashlessBoot)
 {
   UINT64 KernelSizeReserved;
   UINT64 KernelLoadAddr;
@@ -152,13 +152,22 @@ UpdateBootParams (BootParamlist *BootParamlistPtr)
      and DT maximum supported size. This allows best possible utilization
      of buffer for kernel relocation and take care of dynamic change in size
      of ramdisk. Add pagesize as a buffer space */
-  BootParamlistPtr->RamdiskLoadAddr = (BootParamlistPtr->KernelEndAddr -
+
+  if (FlashlessBoot) {
+    BootParamlistPtr->RamdiskLoadAddr = (UINT64)(BootParamlistPtr->ImageBuffer +
+                                        BootParamlistPtr->RamdiskOffset);
+    BootParamlistPtr->DeviceTreeLoadAddr = (BootParamlistPtr->KernelEndAddr -
+					    (DT_SIZE_2MB +
+					    BootParamlistPtr->PageSize));
+  } else {
+    BootParamlistPtr->RamdiskLoadAddr = (BootParamlistPtr->KernelEndAddr -
                             (LOCAL_ROUND_TO_PAGE (BootParamlistPtr->RamdiskSize,
                              BootParamlistPtr->PageSize) +
                              BootParamlistPtr->PageSize));
-  BootParamlistPtr->DeviceTreeLoadAddr = (BootParamlistPtr->RamdiskLoadAddr -
+    BootParamlistPtr->DeviceTreeLoadAddr = (BootParamlistPtr->RamdiskLoadAddr -
                                           (DT_SIZE_2MB +
                                           BootParamlistPtr->PageSize));
+  }
 
   if (BootParamlistPtr->DeviceTreeLoadAddr <=
                       BootParamlistPtr->KernelLoadAddr) {
@@ -654,7 +663,7 @@ GZipPkgCheck (BootParamlist *BootParamlistPtr)
 }
 
 STATIC EFI_STATUS
-LoadAddrAndDTUpdate (BootParamlist *BootParamlistPtr)
+LoadAddrAndDTUpdate (BootParamlist *BootParamlistPtr, BOOLEAN FlashlessBoot)
 {
   EFI_STATUS Status;
   UINT64 RamdiskEndAddr = 0;
@@ -663,6 +672,8 @@ LoadAddrAndDTUpdate (BootParamlist *BootParamlistPtr)
     DEBUG ((EFI_D_ERROR, "Invalid input parameters\n"));
     return EFI_INVALID_PARAMETER;
   }
+  if (FlashlessBoot)
+  goto skip_ramdisk_copy;
 
   RamdiskEndAddr = BootParamlistPtr->KernelEndAddr;
   if (RamdiskEndAddr - BootParamlistPtr->RamdiskLoadAddr <
@@ -680,6 +691,12 @@ LoadAddrAndDTUpdate (BootParamlist *BootParamlistPtr)
     return EFI_BAD_BUFFER_SIZE;
   }
 
+  gBS->CopyMem ((CHAR8 *)BootParamlistPtr->RamdiskLoadAddr,
+                BootParamlistPtr->ImageBuffer +
+                BootParamlistPtr->RamdiskOffset,
+                BootParamlistPtr->RamdiskSize);
+
+skip_ramdisk_copy:
   Status = UpdateDeviceTree ((VOID *)BootParamlistPtr->DeviceTreeLoadAddr,
                              BootParamlistPtr->FinalCmdLine,
                              (VOID *)BootParamlistPtr->RamdiskLoadAddr,
@@ -689,11 +706,6 @@ LoadAddrAndDTUpdate (BootParamlist *BootParamlistPtr)
     DEBUG ((EFI_D_ERROR, "Device Tree update failed Status:%r\n", Status));
     return Status;
   }
-
-  gBS->CopyMem ((CHAR8 *)BootParamlistPtr->RamdiskLoadAddr,
-                BootParamlistPtr->ImageBuffer +
-                BootParamlistPtr->RamdiskOffset,
-                BootParamlistPtr->RamdiskSize);
 
   if (BootParamlistPtr->BootingWith32BitKernel) {
     if (CHECK_ADD64 (BootParamlistPtr->KernelLoadAddr,
@@ -1079,16 +1091,6 @@ skip_FfbmStr:
     return Status;
   }
 
-  Status = UpdateBootParams (&BootParamlistPtr);
-  if (Status != EFI_SUCCESS) {
-    return Status;
-  }
-  SetandGetLoadAddr (&BootParamlistPtr, LOAD_ADDR_NONE);
-  Status = GZipPkgCheck (&BootParamlistPtr);
-  if (Status != EFI_SUCCESS) {
-    return Status;
-  }
-
   /*Finds out the location of device tree image and ramdisk image within the
    *boot image
    *Kernel, Ramdisk and Second sizes all rounded to page
@@ -1110,6 +1112,16 @@ skip_FfbmStr:
     DEBUG ((EFI_D_ERROR, "Integer Overflow: PageSize=%u, KernelSizeActual=%u\n",
            BootParamlistPtr.PageSize, BootParamlistPtr.KernelSizeActual));
     return EFI_BAD_BUFFER_SIZE;
+  }
+
+  Status = UpdateBootParams (&BootParamlistPtr, FlashlessBoot);
+  if (Status != EFI_SUCCESS) {
+    return Status;
+  }
+  SetandGetLoadAddr (&BootParamlistPtr, LOAD_ADDR_NONE);
+  Status = GZipPkgCheck (&BootParamlistPtr);
+  if (Status != EFI_SUCCESS) {
+    return Status;
   }
 
   DEBUG ((EFI_D_VERBOSE, "Kernel Load Address: 0x%x\n",
@@ -1151,7 +1163,7 @@ skip_FfbmStr:
     return Status;
   }
 
-  Status = LoadAddrAndDTUpdate (&BootParamlistPtr);
+  Status = LoadAddrAndDTUpdate (&BootParamlistPtr, FlashlessBoot);
   if (Status != EFI_SUCCESS) {
        return Status;
   }
