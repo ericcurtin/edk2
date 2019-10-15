@@ -1067,6 +1067,8 @@ skip_FfbmStr:
                ((boot_img_hdr *)(BootParamlistPtr.ImageBuffer))->page_size;
   BootParamlistPtr.CmdLine = (CHAR8 *)&(((boot_img_hdr *)
                              (BootParamlistPtr.ImageBuffer))->cmdline[0]);
+  BootParamlistPtr.ExtraCmdLine = (CHAR8 *)&(((boot_img_hdr *)
+                            (BootParamlistPtr.ImageBuffer))->extra_cmdline[0]);
 
   if (IsVmEnabled ()) {
     Status = UpdateMemRegions (&BootParamlistPtr,
@@ -1142,7 +1144,18 @@ skip_FfbmStr:
    *baseband information, etc
    *Called before ShutdownUefiBootServices as it uses some boot service
    *functions*/
-  BootParamlistPtr.CmdLine[BOOT_ARGS_SIZE - 1] = '\0';
+  if (BootParamlistPtr.ExtraCmdLine[0]) {
+    UINT32 FullCmdLen = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
+    CHAR8* FullCmdLine = AllocateZeroPool (FullCmdLen);
+
+    AsciiStrCpyS (FullCmdLine, FullCmdLen, BootParamlistPtr.CmdLine);
+    AsciiStrCatS (FullCmdLine, FullCmdLen, BootParamlistPtr.ExtraCmdLine);
+    BootParamlistPtr.CmdLine = FullCmdLine;
+    BootParamlistPtr.CmdLine[FullCmdLen - 1] = '\0';
+  }
+  else {
+    BootParamlistPtr.CmdLine[BOOT_ARGS_SIZE - 1] = '\0';
+  }
 
   if (AsciiStrStr (BootParamlistPtr.CmdLine, "root=")) {
     BootDevImage = TRUE;
