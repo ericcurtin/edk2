@@ -85,6 +85,7 @@ typedef struct UpdateCmdLineParamList {
   CHAR8 *EarlyIPv6CmdLine;
   CHAR8 *EarlyEthMacCmdLine;
   CHAR8 *EarlyServicesCmdLine;
+  CHAR8 *ModemPathCmdLine;
 } UpdateCmdLineParamList;
 
 EFI_STATUS
