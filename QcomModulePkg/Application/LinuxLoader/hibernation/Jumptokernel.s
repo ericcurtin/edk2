@@ -26,7 +26,7 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if HIBERNATION_SUPPORT
+#ifdef HIBERNATION_SUPPORT
 
 /*
  * size of single entry in table
