@@ -175,6 +175,7 @@ typedef struct BootLinuxParamlist {
 
   CHAR8 *FinalCmdLine;
   CHAR8 *CmdLine;
+  CHAR8 *ExtraCmdLine;
   BOOLEAN BootingWith32BitKernel;
   BOOLEAN BootingWithPatchedKernel;
   BOOLEAN BootingWithGzipPkgKernel;
@@ -196,6 +197,7 @@ LaunchApp (IN UINT32 Argc, IN CHAR8 **Argv);
 BOOLEAN TargetBuildVariantUser (VOID);
 BOOLEAN IsLEVariant (VOID);
 BOOLEAN IsBuildAsSystemRootImage (VOID);
+BOOLEAN EarlyServicesEnabled (VOID);
 EFI_STATUS
 GetImage (CONST BootInfo *Info,
           VOID **ImageBuffer,
