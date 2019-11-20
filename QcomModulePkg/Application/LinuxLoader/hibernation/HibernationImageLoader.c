@@ -81,6 +81,7 @@ struct kernel_pfn_iterator {
 };
 static struct kernel_pfn_iterator kernel_pfn_iterator;
 
+static struct swsusp_header *swsusp_header;
 /*
  * Bounce Pages - During the copy of pages from snapshot image to
  * RAM, certain pages can conflicts with concurrently running UEFI/ABL
@@ -139,7 +140,7 @@ struct bounce_table_iterator table_iterator;
 /* Final entry is used to link swap_map pages together */
 #define ENTRIES_PER_SWAPMAP_PAGE 	(PFN_INDEXES_PER_PAGE - 1)
 
-#define SWAP_INFO_OFFSET        2
+#define SWAP_INFO_OFFSET        (swsusp_header->image + 1)
 #define FIRST_PFN_INDEX_OFFSET	(SWAP_INFO_OFFSET + 1)
 
 #define SWAP_PARTITION_NAME	L"swap_a"
@@ -219,7 +220,7 @@ static unsigned long get_unused_kernel_pfn(void)
 		find_next_available_block(iter);
 
 	iter->cur_block.available_pfns--;
-	return iter->cur_block.base_pfn++;
+	return ++iter->cur_block.base_pfn;
 }
 
 /*
@@ -477,12 +478,14 @@ static void print_image_kernel_details(struct swsusp_info *info)
 }
 
 /*
- * swap_map pages are at offsets 1, 513, 1025, 1537,....
+ * swsusp_header->image points to first swap_map page. From there onwards,
+ * swap_map pages are repeated at every PFN_INDEXES_PER_PAGE intervals.
  * This function returns true if offset belongs to a swap_map page.
  */
 static int check_swap_map_page(unsigned long offset)
 {
-	return (offset % PFN_INDEXES_PER_PAGE) == 1;
+	offset -= swsusp_header->image;
+	return (offset % PFN_INDEXES_PER_PAGE) == 0;
 }
 
 static int read_swap_info_struct(void)
@@ -612,10 +615,14 @@ static unsigned long* read_kernel_image_pfn_indexes(unsigned long *offset)
 			break;
 		loop++;
 		/*
-		 * swap_map pages are at (512n + 1), so pfn_index pages
-		 * starst at (512n + 2)
+		 * swsusp_header->image points to first swap_map page. From there onwards,
+		 * swap_map pages are repeated at PFN_INDEXES_PER_PAGE interval.
+		 * pfn_index pages follows the swap map page. So we can arrive at
+		 * next pfn_index by using below formula,
+		 *
+		 * base_swap_map_slot + PFN_INDEXES_PER_PAGE * n + 1
 		 */
-		disk_offset = loop * PFN_INDEXES_PER_PAGE + 2;
+		disk_offset = swsusp_header->image + (PFN_INDEXES_PER_PAGE * loop) + 1;
 		pages_to_read = MIN(pending_pages, ENTRIES_PER_SWAPMAP_PAGE);
 		array_index = pfn_array + pages_read * PFN_INDEXES_PER_PAGE;
 	} while (1);
@@ -906,8 +913,6 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 
 static int check_for_valid_header(void)
 {
-	struct swsusp_header *swsusp_header;
-
 	swsusp_header = AllocatePages(1);
 	if(!swsusp_header) {
 		printf("Memory alloc failed Line %d\n", __LINE__);
@@ -924,6 +929,7 @@ static int check_for_valid_header(void)
 		goto read_image_error;
 	}
 
+	printf("Image slot at 0x%lx\n", swsusp_header->image);
 	printf("Signature found. Proceeding with disk read...\n");
 	return 0;
 
