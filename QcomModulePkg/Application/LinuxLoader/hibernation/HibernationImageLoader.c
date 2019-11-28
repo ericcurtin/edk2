@@ -58,8 +58,6 @@ struct mapped_range {
         struct mapped_range * next;
 };
 
-static struct mapped_range * uefi_mapped_sorted_list;
-
 /* number of data pages to be copied from swap */
 static unsigned int nr_copy_pages;
 /* number of meta pages or pages which hold pfn indexes */
@@ -83,6 +81,7 @@ struct kernel_pfn_iterator {
 };
 static struct kernel_pfn_iterator kernel_pfn_iterator;
 
+static struct swsusp_header *swsusp_header;
 /*
  * Bounce Pages - During the copy of pages from snapshot image to
  * RAM, certain pages can conflicts with concurrently running UEFI/ABL
@@ -141,7 +140,7 @@ struct bounce_table_iterator table_iterator;
 /* Final entry is used to link swap_map pages together */
 #define ENTRIES_PER_SWAPMAP_PAGE 	(PFN_INDEXES_PER_PAGE - 1)
 
-#define SWAP_INFO_OFFSET        2
+#define SWAP_INFO_OFFSET        (swsusp_header->image + 1)
 #define FIRST_PFN_INDEX_OFFSET	(SWAP_INFO_OFFSET + 1)
 
 #define SWAP_PARTITION_NAME	L"swap_a"
@@ -221,7 +220,7 @@ static unsigned long get_unused_kernel_pfn(void)
 		find_next_available_block(iter);
 
 	iter->cur_block.available_pfns--;
-	return iter->cur_block.base_pfn++;
+	return ++iter->cur_block.base_pfn;
 }
 
 /*
@@ -320,11 +319,10 @@ static struct mapped_range * add_range_sorted(struct mapped_range * head, UINT64
 }
 
 /*
- * This function populates two things:
- * i) free_range_buf - to collect the conventional memory in uefi memory
- * ii) uefi_mapped_sorted_list - containing the mapped uefi memory ranges
-*/
-static int get_uefi_memory_map(void)
+ * Get the UEFI memory map to collect ranges of
+ * memory of type EfiConventional
+ */
+static int get_conventional_memory_ranges(void)
 {
 	EFI_MEMORY_DESCRIPTOR	*MemMap;
 	EFI_MEMORY_DESCRIPTOR	*MemMapPtr;
@@ -371,15 +369,6 @@ static int get_uefi_memory_map(void)
 					free_range_buf[index].end);
 			index++;
 		}
-		uefi_mapped_sorted_list = add_range_sorted(uefi_mapped_sorted_list,
-			MemMap->PhysicalStart,
-			MemMap->PhysicalStart + MemMap->NumberOfPages * PAGE_SIZE);
-
-		if (!uefi_mapped_sorted_list) {
-			printf("ERROR: uefi_mapped_sorted_list is NULL\n");
-			return -1;
-		}
-
 		MemMap = (EFI_MEMORY_DESCRIPTOR *)((UINTN)MemMap + DescriptorSize);
 	}
 	free_range_count = index;
@@ -489,12 +478,14 @@ static void print_image_kernel_details(struct swsusp_info *info)
 }
 
 /*
- * swap_map pages are at offsets 1, 513, 1025, 1537,....
+ * swsusp_header->image points to first swap_map page. From there onwards,
+ * swap_map pages are repeated at every PFN_INDEXES_PER_PAGE intervals.
  * This function returns true if offset belongs to a swap_map page.
  */
 static int check_swap_map_page(unsigned long offset)
 {
-	return (offset % PFN_INDEXES_PER_PAGE) == 1;
+	offset -= swsusp_header->image;
+	return (offset % PFN_INDEXES_PER_PAGE) == 0;
 }
 
 static int read_swap_info_struct(void)
@@ -624,10 +615,14 @@ static unsigned long* read_kernel_image_pfn_indexes(unsigned long *offset)
 			break;
 		loop++;
 		/*
-		 * swap_map pages are at (512n + 1), so pfn_index pages
-		 * starst at (512n + 2)
+		 * swsusp_header->image points to first swap_map page. From there onwards,
+		 * swap_map pages are repeated at PFN_INDEXES_PER_PAGE interval.
+		 * pfn_index pages follows the swap map page. So we can arrive at
+		 * next pfn_index by using below formula,
+		 *
+		 * base_swap_map_slot + PFN_INDEXES_PER_PAGE * n + 1
 		 */
-		disk_offset = loop * PFN_INDEXES_PER_PAGE + 2;
+		disk_offset = swsusp_header->image + (PFN_INDEXES_PER_PAGE * loop) + 1;
 		pages_to_read = MIN(pending_pages, ENTRIES_PER_SWAPMAP_PAGE);
 		array_index = pfn_array + pages_read * PFN_INDEXES_PER_PAGE;
 	} while (1);
@@ -688,6 +683,61 @@ static int read_data_pages(unsigned long *kernel_pfn_indexes,
 	return 0;
 }
 
+static struct mapped_range * get_uefi_sorted_memory_map()
+{
+	EFI_MEMORY_DESCRIPTOR	*MemMap;
+	EFI_MEMORY_DESCRIPTOR	*MemMapPtr;
+	UINTN			MemMapSize;
+	UINTN			MapKey, DescriptorSize;
+	UINTN			Index;
+	UINT32			DescriptorVersion;
+	EFI_STATUS		Status;
+
+	struct mapped_range * uefi_map = NULL;
+	MemMapSize = 0;
+	MemMap     = NULL;
+
+	Status = gBS->GetMemoryMap (&MemMapSize, MemMap, &MapKey,
+				&DescriptorSize, &DescriptorVersion);
+	if (Status != EFI_BUFFER_TOO_SMALL) {
+		printf("ERROR: Undefined response get memory map\n");
+		return NULL;
+	}
+	if (CHECK_ADD64 (MemMapSize, EFI_PAGE_SIZE)) {
+		printf("ERROR: integer Overflow while adding additional"
+					"memory to MemMapSize");
+		return NULL;
+	}
+	MemMapSize = MemMapSize + EFI_PAGE_SIZE;
+	MemMap = AllocateZeroPool (MemMapSize);
+	if (!MemMap) {
+		printf("ERROR: Failed to allocate memory for memory map\n");
+		return NULL;
+	}
+	MemMapPtr = MemMap;
+	Status = gBS->GetMemoryMap (&MemMapSize, MemMap, &MapKey,
+				&DescriptorSize, &DescriptorVersion);
+	if (EFI_ERROR (Status)) {
+		printf("ERROR: Failed to query memory map\n");
+		FreePool (MemMapPtr);
+		return NULL;
+	}
+	for (Index = 0; Index < MemMapSize / DescriptorSize; Index ++) {
+		uefi_map = add_range_sorted(uefi_map,
+			MemMap->PhysicalStart,
+			MemMap->PhysicalStart + MemMap->NumberOfPages * PAGE_SIZE);
+
+		if (!uefi_map) {
+			printf("ERROR: uefi_map is NULL\n");
+			return NULL;
+		}
+
+		MemMap = (EFI_MEMORY_DESCRIPTOR *)((UINTN)MemMap + DescriptorSize);
+	}
+	FreePool (MemMapPtr);
+	return uefi_map;
+}
+
 static EFI_STATUS create_mapping(UINTN addr, UINTN size)
 {
 	EFI_STATUS status;
@@ -727,25 +777,34 @@ static EFI_STATUS create_mapping(UINTN addr, UINTN size)
  */
 static EFI_STATUS uefi_map_unmapped()
 {
-	struct mapped_range * cur = uefi_mapped_sorted_list, * next;
+	struct mapped_range * uefi_mapped_sorted_list, * cur, * next;
 	EFI_STATUS Status;
-	UINTN size;
 
-	if (!cur)
+	uefi_mapped_sorted_list = get_uefi_sorted_memory_map();
+	if (!uefi_mapped_sorted_list) {
+		printf("ERROR: Unable to get UEFI memory map\n");
 		return -1;
+	}
+
+	cur = uefi_mapped_sorted_list;
 	next = cur->next;
 
-	while (next) {
-		size = next->start - cur->end;
-		if (size > 0) {
-			Status = create_mapping(cur->end, size);
+	while (cur) {
+		if (next && (next->start > cur->end)) {
+			Status = create_mapping(cur->end, next->start - cur->end);
 			if (Status != EFI_SUCCESS) {
 				printf("ERROR: Mapping failed\n");
 				return Status;
 			}
 		}
+		Status = gBS->FreePool(cur);
+		if(Status != EFI_SUCCESS) {
+			printf("FreePool failed %d\n", __LINE__);
+			return -1;
+		}
 		cur = next;
-		next = next->next;
+		if (next)
+			next = next->next;
 	}
 
 	return EFI_SUCCESS;
@@ -778,11 +837,18 @@ static int restore_snapshot_image(void)
 				disk_read_buffer + DISK_BUFFER_SIZE - 1);
 	}
 
+	printf("Mapping Regions:\n");
+	ret = uefi_map_unmapped();
+	if (ret < 0) {
+		printf("Error mapping unmapped regions\n");
+		goto err;
+	}
+
 	/*
 	 * No dynamic allocation beyond this point. If not honored it will
 	 * result in corruption of pages.
 	 */
-	get_uefi_memory_map();
+	get_conventional_memory_ranges();
 	preallocate_free_ranges();
 
 	bti->first_table = (struct bounce_table *)(get_unused_pfn() << PAGE_SHIFT);
@@ -791,13 +857,6 @@ static int restore_snapshot_image(void)
 	ret = read_data_pages(kernel_pfn_indexes, offset, disk_read_buffer);
 	if (ret < 0) {
 		printf("error in restore_snapshot_image\n");
-		goto err;
-	}
-
-	printf("Mapping Regions:\n");
-	ret = uefi_map_unmapped();
-	if (ret < 0) {
-		printf("Error mapping unmapped regions\n");
 		goto err;
 	}
 
@@ -854,8 +913,6 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 
 static int check_for_valid_header(void)
 {
-	struct swsusp_header *swsusp_header;
-
 	swsusp_header = AllocatePages(1);
 	if(!swsusp_header) {
 		printf("Memory alloc failed Line %d\n", __LINE__);
@@ -872,6 +929,7 @@ static int check_for_valid_header(void)
 		goto read_image_error;
 	}
 
+	printf("Image slot at 0x%lx\n", swsusp_header->image);
 	printf("Signature found. Proceeding with disk read...\n");
 	return 0;
 

@@ -51,11 +51,10 @@ typedef unsigned int u32;
 typedef unsigned long sector_t;
 
 struct swsusp_header {
-	char reserved[PAGE_SIZE - 20 - sizeof(sector_t) - sizeof(sector_t) - sizeof(int) -
+	char reserved[PAGE_SIZE - 20 - sizeof(sector_t) - sizeof(int) -
 		sizeof(u32)];
 	u32     crc32;
 	sector_t image;
-	sector_t kernel_entry;
 	unsigned int flags;     /* Flags to pass to the "boot" kernel */
 	char    orig_sig[10];
 	char    sig[10];
