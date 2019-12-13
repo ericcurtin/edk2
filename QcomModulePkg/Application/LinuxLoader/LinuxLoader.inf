@@ -62,6 +62,7 @@
 	EfiFileLib
 	FastbootLib
 	UbsanLib
+	AvbLib
 
 [Guids]
 	gEfiFileInfoGuid
