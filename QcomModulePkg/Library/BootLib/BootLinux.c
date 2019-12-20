@@ -1206,7 +1206,7 @@ skip_FfbmStr:
   }
 
   Status = UpdateCmdLine (BootParamlistPtr.CmdLine, FfbmStr, Recovery,
-                   FlashlessBoot, AlarmBoot, Info->VBCmdLine,
+                   FlashlessBoot, AlarmBoot, Info->VBCmdLine, Info->SnapCmdLine,
 		   &BootParamlistPtr.FinalCmdLine);
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_ERROR, "Error updating cmdline. Device Error %r\n", Status));

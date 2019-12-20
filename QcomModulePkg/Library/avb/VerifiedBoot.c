@@ -34,6 +34,7 @@
 #include <Library/VerifiedBootMenu.h>
 #include <Library/LEOEMCertificate.h>
 #include <Library/HypervisorMvCalls.h>
+#include <Library/SnappyBoot.h>
 
 STATIC CONST CHAR8 *VerityMode = " androidboot.veritymode=";
 STATIC CONST CHAR8 *VerifiedState = " androidboot.verifiedbootstate=";
@@ -1425,7 +1426,13 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume)
   } else {
     Slot CurrentSlot = {{0}};
 
-    GUARD (FindBootableSlot (&CurrentSlot));
+    GUARD (SnapGetTargetBootParams(&CurrentSlot, &Info->SnapCmdLine, IsUnlocked()));
+    // TODO: Bootloader seems to auto rollback to other boot image if boot image is corrupted
+    // TODO: remove folling lines which are more for fallback compatibility to linaro boot
+    if (IsSuffixEmpty (&CurrentSlot)) {
+      GUARD (FindBootableSlot (&CurrentSlot));
+    }
+
     if (IsSuffixEmpty (&CurrentSlot)) {
       DEBUG ((EFI_D_ERROR, "No bootable slot\n"));
       return EFI_LOAD_ERROR;
@@ -1462,6 +1469,7 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume)
     }
   }
 
+  DEBUG ((EFI_D_INFO, "snap boot  params [%s][%a]\n", Info->Pname, Info->SnapCmdLine));
   AVBVersion = GetAVBVersion ();
   DEBUG ((EFI_D_VERBOSE, "AVB version %d\n", AVBVersion));
 

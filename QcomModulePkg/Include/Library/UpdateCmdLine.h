@@ -68,6 +68,7 @@ typedef struct UpdateCmdLineParamList {
   CONST CHAR8 *BatteryChgPause;
   CONST CHAR8 *UsbSerialCmdLine;
   CONST CHAR8 *VBCmdLine;
+  CONST CHAR8 *SnapCmdLine;
   CONST CHAR8 *LogLevel;
   CONST CHAR8 *BootDeviceCmdLine;
   CONST CHAR8 *AndroidBootMode;
@@ -97,6 +98,7 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
 	       BOOLEAN FlashlessBoot,
                BOOLEAN AlarmBoot,
                CONST CHAR8 *VBCmdLine,
+               CONST CHAR8 *SnapCmdLine,
                CHAR8 **FinalCmdLine);
 BOOLEAN
 TargetBatterySocOk (UINT32 *BatteryVoltage);

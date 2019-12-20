@@ -62,6 +62,7 @@
 	FastbootMenu.c
 	VerifiedBootMenu.c
 	PartitionTableUpdate.c
+	SnappyBoot.c
 	DeviceInfo.c
 	Rtic.c
 	PartialGoods.c

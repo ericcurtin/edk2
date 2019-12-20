@@ -141,6 +141,7 @@ typedef struct BootInfo {
   CHAR8 *VBCmdLine;
   UINT32 VBCmdLineLen;
   UINT32 VBCmdLineFilledLen;
+  CHAR8 *SnapCmdLine;
   VOID *VBData;
   UINT32 HeaderVersion;
 } BootInfo;
