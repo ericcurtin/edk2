@@ -49,7 +49,7 @@
 #define DEFAULT_STACK_CHK_GUARD 0xc0c0c0c0
 
 #if HIBERNATION_SUPPORT
-void BootIntoHibernationImage(void);
+void BootIntoHibernationImage(BootInfo *Info);
 #endif
 
 STATIC BOOLEAN BootReasonAlarm = FALSE;
@@ -293,15 +293,15 @@ flashless_boot:
   if(BootIntoFastboot)
       goto fastboot;
   else {
-  #if HIBERNATION_SUPPORT
-      BootIntoHibernationImage();
-  #endif
     BootInfo Info = {0};
     Info.MultiSlotBoot = MultiSlotBoot;
     Info.BootIntoRecovery = BootIntoRecovery;
     Info.BootReasonAlarm = BootReasonAlarm;
     Info.FlashlessBoot = FlashlessBoot;
-    Status = LoadImageAndAuth (&Info);
+  #if HIBERNATION_SUPPORT
+    BootIntoHibernationImage(&Info);
+  #endif
+    Status = LoadImageAndAuth (&Info, FALSE);
     if (Status != EFI_SUCCESS) {
       DEBUG ((EFI_D_ERROR, "LoadImageAndAuth failed: %r\n", Status));
       goto fastboot;
