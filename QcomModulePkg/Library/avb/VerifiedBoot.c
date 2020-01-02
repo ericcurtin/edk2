@@ -43,10 +43,6 @@ STATIC CONST CHAR8 *DmVerityCmd = " root=/dev/dm-0 dm=\"system none ro,0 1 "
 STATIC CONST CHAR8 *Space = " ";
 extern UINT64 FlashlessBootImageAddr;
 
-#if HIBERNATION_SUPPORT
-KMRotAndBootState hb_Data = {0};
-#endif
-
 #define MAX_NUM_REQ_PARTITION    8
 #define MAX_PROPERTY_SIZE        10
 
@@ -1160,10 +1156,6 @@ LoadImageAndAuthVB2 (BootInfo *Info)
     Data.SystemSecurityLevel = (BootImgHdr->os_version & 0x7FF);
   }
   Data.SystemVersion = (BootImgHdr->os_version & 0xFFFFF800) >> 11;
-
-#if HIBERNATION_SUPPORT
-  hb_Data = Data;
-#endif
 
   GUARD_OUT (KeyMasterSetRotAndBootState (&Data));
   ComputeVbMetaDigest (SlotData, (CHAR8 *)&Digest);

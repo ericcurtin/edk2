@@ -36,9 +36,6 @@
 #include "Hibernation.h"
 #include "BootStats.h"
 #include <Library/DxeServicesTableLib.h>
-#include <KeymasterClient.h>
-
-extern KMRotAndBootState hb_Data;
 
 #define BUG(fmt, ...) {\
 		printf("Fatal error " fmt, ##__VA_ARGS__);\
@@ -944,7 +941,6 @@ read_image_error:
 void BootIntoHibernationImage(void)
 {
 	int ret;
-	EFI_STATUS Status = EFI_SUCCESS;
 
 	printf("===============================\n");
 	printf("Entrying Hibernation restore\n");
@@ -957,14 +953,7 @@ void BootIntoHibernationImage(void)
 		printf("Failed restore_snapshot_image \n");
 		return;
 	}
-	/*Communicate ROT, Bootstate details to TZ during hibernation resume,
-	 *as TZ encountered a coldboot sequence.
-	 */
-	Status = KeyMasterSetRotAndBootState(&hb_Data);
-	if (Status != EFI_SUCCESS) {
-		printf("Failed to Communicate keymaster info to TZ"
-			"during hibernation resume.\n");
-	}
+
 	relocation_base_addr = get_unused_pfn() << PAGE_SHIFT;
 	copy_bounce_and_boot_kernel(relocation_base_addr);
 	/* We should not reach here */
