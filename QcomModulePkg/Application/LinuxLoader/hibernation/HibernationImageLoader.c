@@ -36,6 +36,7 @@
 #include "Hibernation.h"
 #include "BootStats.h"
 #include <Library/DxeServicesTableLib.h>
+#include <VerifiedBoot.h>
 
 #define BUG(fmt, ...) {\
 		printf("Fatal error " fmt, ##__VA_ARGS__);\
@@ -1045,15 +1046,22 @@ read_image_error:
 	return -1;
 }
 
-void BootIntoHibernationImage(void)
+void BootIntoHibernationImage(BootInfo *Info)
 {
 	int ret;
+	EFI_STATUS Status = EFI_SUCCESS;
 
 	printf("===============================\n");
 	printf("Entrying Hibernation restore\n");
 
 	if (check_for_valid_header() < 0)
 		return;
+
+	Status = LoadImageAndAuth (Info, TRUE);
+	if (Status != EFI_SUCCESS) {
+		DEBUG ((EFI_D_ERROR, "Failed to set ROT and Bootstate : %r\n", Status));
+		return;
+	}
 
 	ret = restore_snapshot_image();
 	if (ret) {
