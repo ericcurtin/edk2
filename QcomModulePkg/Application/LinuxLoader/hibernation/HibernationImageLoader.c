@@ -821,6 +821,12 @@ static EFI_STATUS uefi_map_unmapped()
 
 #define PT_ENTRIES_PER_LEVEL 512
 
+static void set_rw_perm(unsigned long *entry)
+{
+	/* Clear AP perm bits */
+	*entry &= ~(0x3UL << 6);
+}
+
 static void set_ex_perm(unsigned long *entry)
 {
 	/* Clear UXN and PXN bits */
@@ -832,7 +838,10 @@ static int relocate_pagetables(int level, unsigned long *entry, int pt_count)
 	int i;
 	unsigned long mask;
 	unsigned long *page_addr;
+	unsigned long apPerm;
 
+	apPerm = *entry & (0x3 << 6);
+	apPerm = apPerm >> 6;
 	/* Strip out lower and higher page attribute fields */
 	mask = ~(0xFFFFUL << 48 | 0XFFFUL);
 
@@ -841,8 +850,10 @@ static int relocate_pagetables(int level, unsigned long *entry, int pt_count)
 		return pt_count;
 
 	if (level == 3 ) {
-		if((*entry & mask) == relocateAddress)
+		if ((*entry & mask) == relocateAddress)
 			set_ex_perm(entry);
+		if (apPerm == 2 || apPerm == 3)
+			set_rw_perm(entry);
 		return pt_count;
 	}
 
@@ -855,6 +866,8 @@ static int relocate_pagetables(int level, unsigned long *entry, int pt_count)
 			ALIGN_2MB(addr);
 		if ((*entry & mask) == addr)
 			set_ex_perm(entry);
+		if(apPerm == 2 || apPerm == 3)
+			set_rw_perm(entry);
 		return pt_count;
 	}
 
