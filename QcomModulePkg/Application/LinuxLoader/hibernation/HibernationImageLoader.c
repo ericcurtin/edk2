@@ -42,6 +42,9 @@
 		while(1);\
 	}
 
+#define ALIGN_1GB(address) address &= ~((1 << 30) - 1)
+#define ALIGN_2MB(address) address &= ~((1 << 21) - 1)
+
 /* Reserved some free memory for UEFI use */
 #define RESERVE_FREE_SIZE	1024*1024*10
 struct free_ranges {
@@ -65,7 +68,6 @@ static unsigned int nr_meta_pages;
 /* number of image kernel pages bounced due to conflict with UEFI */
 static unsigned long bounced_pages;
 
-static UINT64 relocation_base_addr;
 static struct arch_hibernate_hdr *resume_hdr;
 
 struct pfn_block {
@@ -135,6 +137,8 @@ struct bounce_table_iterator {
 	int cur_index;
 };
 struct bounce_table_iterator table_iterator;
+
+unsigned long relocateAddress;
 
 #define PFN_INDEXES_PER_PAGE		512
 /* Final entry is used to link swap_map pages together */
@@ -674,8 +678,12 @@ static int read_data_pages(unsigned long *kernel_pfn_indexes,
 	BootStatsSetTimeStamp (BS_KERNEL_LOAD_DONE);
 
 	MBs = (nr_copy_pages*PAGE_SIZE)/(1024*1024);
+	if (disk_read_ms == 0 || copy_page_ms == 0)
+		return 0;
+
 	MBPS = (MBs*1000)/disk_read_ms;
 	DDR_MBPS = (MBs*1000)/copy_page_ms;
+
 	printf("Image size = %lu MBs\n", MBs);
 	printf("Time spend - disk IO = %lu msecs (BW = %llu MBps)\n", disk_read_ms, MBPS);
 	printf("Time spend - DDR copy = %llu msecs (BW = %llu MBps)\n", copy_page_ms, DDR_MBPS);
@@ -753,7 +761,7 @@ static EFI_STATUS create_mapping(UINTN addr, UINTN size)
 	if (Descriptor.GcdMemoryType != EfiGcdMemoryTypeMemoryMappedIo) {
 		if (Descriptor.GcdMemoryType != EfiGcdMemoryTypeNonExistent){
 			status = gDS->RemoveMemorySpace(addr, size);
-			printf("Falied RemoveMemorySpace %d\n", __LINE__);
+			printf("Falied RemoveMemorySpace %d: %d\n", __LINE__, status);
 		}
 		status = gDS->AddMemorySpace(EfiGcdMemoryTypeReserved, addr, size, EFI_MEMORY_UC);
 		if (EFI_ERROR(status)) {
@@ -808,6 +816,89 @@ static EFI_STATUS uefi_map_unmapped()
 	}
 
 	return EFI_SUCCESS;
+}
+
+#define PT_ENTRIES_PER_LEVEL 512
+
+static void set_ex_perm(unsigned long *entry)
+{
+	/* Clear UXN and PXN bits */
+	*entry &= ~(0x3UL << 53);
+}
+
+static int relocate_pagetables(int level, unsigned long *entry, int pt_count)
+{
+	int i;
+	unsigned long mask;
+	unsigned long *page_addr;
+
+	/* Strip out lower and higher page attribute fields */
+	mask = ~(0xFFFFUL << 48 | 0XFFFUL);
+
+	/* Invalid entry */
+	if (level > 3 || !(*entry & 0x1))
+		return pt_count;
+
+	if (level == 3 ) {
+		if((*entry & mask) == relocateAddress)
+			set_ex_perm(entry);
+		return pt_count;
+	}
+
+	/* block entries */
+	if ((*entry & 0x3) == 1) {
+		unsigned long addr = relocateAddress;
+		if(level == 1)
+			ALIGN_1GB(addr);
+		if (level == 2)
+			ALIGN_2MB(addr);
+		if ((*entry & mask) == addr)
+			set_ex_perm(entry);
+		return pt_count;
+	}
+
+	/* Control reaches here only if it is a table entry */
+
+	page_addr = (unsigned long*)(get_unused_pfn() << PAGE_SHIFT);
+
+	gBS->CopyMem ((void *)(page_addr), (void *)(*entry & mask), PAGE_SIZE);
+	pt_count++;
+	/* Clear off the old address alone */
+	*entry &= ~mask;
+	/* Fill new table address */
+	*entry |= (unsigned long )page_addr;
+
+	for (i = 0 ; i < PT_ENTRIES_PER_LEVEL; i++)
+		pt_count = relocate_pagetables(level + 1, page_addr + i, pt_count);
+
+	return pt_count;
+}
+
+static unsigned long get_ttbr0()
+{
+	unsigned long base;
+
+	asm __volatile__ (
+	"mrs %[ttbr0_base], ttbr0_el1\n"
+	:[ttbr0_base] "=r" (base)
+	:
+	:"memory");
+
+	return base;
+}
+
+static unsigned long copy_page_tables()
+{
+	unsigned long old_ttbr0 = get_ttbr0();
+	unsigned long new_ttbr0;
+	int pt_count = 0;
+
+	new_ttbr0 = get_unused_pfn() << PAGE_SHIFT;
+	gBS->CopyMem ((void *)(new_ttbr0), (void *)(old_ttbr0), PAGE_SIZE);
+	pt_count = relocate_pagetables(0, (unsigned long *)new_ttbr0, 1);
+
+	printf("Copied %d Page Tables\n", pt_count);
+	return new_ttbr0;
 }
 
 static int restore_snapshot_image(void)
@@ -868,25 +959,26 @@ err:
 	return ret;
 }
 
-static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
+static void copy_bounce_and_boot_kernel()
 {
 	int Status;
 	struct bounce_table_iterator *bti = &table_iterator;
 	unsigned long cpu_resume = (unsigned long )resume_hdr->phys_reenter_kernel;
-
-	/* TODO:
-	 * We are not relocating the jump routine for now so avoid this copy
-	 * gBS->CopyMem ((VOID*)relocateAddress, (VOID*)&JumpToKernel, PAGE_SIZE);
-	 */
+	unsigned long ttbr0;
 
 	/*
 	 * The restore routine "JumpToKernel" copies the bounced pages after iterating
 	 * through the bounce entry table and passes control to hibernated kernel after
-	 * calling PreparePlatformHarware
+	 * calling _PreparePlatformHarware
+	 *
+	 * Disclaimer: JumpToKernel.s is less than PAGE_SIZE
 	 */
+	gBS->CopyMem ((VOID*)relocateAddress, (VOID*)&JumpToKernel, PAGE_SIZE);
+	ttbr0 = copy_page_tables();
 
 	printf("Disable UEFI Boot services\n");
 	printf("Kernel entry point = 0x%lx\n", cpu_resume);
+	printf("Relocation code at = 0x%lx\n", relocateAddress);
 
 	/* Shut down UEFI boot services */
 	Status = ShutdownUefiBootServices ();
@@ -898,16 +990,31 @@ static void copy_bounce_and_boot_kernel(UINT64 relocateAddress)
 	}
 
 	asm __volatile__ (
+		"mov	x18, %[ttbr_reg]\n"
+		"msr 	ttbr0_el1, x18\n"
+		"dsb	sy\n"
+		"isb\n"
+		"ic	iallu\n"
+		"dsb	sy\n"
+		"isb\n"
+		"tlbi	vmalle1\n"
+		"dsb	sy\n"
+		"isb\n"
+		:
+		:[ttbr_reg] "r" (ttbr0)
+		:"x18", "memory");
+
+	asm __volatile__ (
 		"mov x18, %[table_base]\n"
 		"mov x19, %[count]\n"
 		"mov x21, %[resume]\n"
-		"mov x22, %[disable_cache]\n"
-		"b JumpToKernel"
+		"mov x22, %[relocate_code]\n"
+		"br x22"
 		:
 		:[table_base] "r" (bti->first_table),
 		[count] "r" (bounced_pages),
 		[resume] "r" (cpu_resume),
-		[disable_cache] "r" (PreparePlatformHardware)
+		[relocate_code] "r" (relocateAddress)
 		:"x18", "x19", "x21", "x22", "memory");
 }
 
@@ -954,9 +1061,9 @@ void BootIntoHibernationImage(void)
 		return;
 	}
 
-	relocation_base_addr = get_unused_pfn() << PAGE_SHIFT;
-	copy_bounce_and_boot_kernel(relocation_base_addr);
-	/* We should not reach here */
+	relocateAddress = get_unused_pfn() << PAGE_SHIFT;
+	copy_bounce_and_boot_kernel();
+	/* Control should not reach here */
 
 	return;
 }
