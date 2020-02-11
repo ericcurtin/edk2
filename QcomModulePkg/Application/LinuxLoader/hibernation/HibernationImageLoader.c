@@ -1078,6 +1078,18 @@ read_image_error:
 	return -1;
 }
 
+void erase_swap_signature(void)
+{
+	int status;
+	EFI_BLOCK_IO_PROTOCOL *BlockIo = swap_details.BlockIo;
+
+	swsusp_header->sig[0] = ' ';
+	status = BlockIo->WriteBlocks (BlockIo, BlockIo->Media->MediaId, 0,
+			BlockIo->Media->BlockSize, (VOID*)swsusp_header);
+	if (status != EFI_SUCCESS)
+		printf("Failed to erase swap signature\n");
+}
+
 void BootIntoHibernationImage(BootInfo *Info)
 {
 	int ret;
@@ -1102,6 +1114,9 @@ void BootIntoHibernationImage(BootInfo *Info)
 	}
 
 	relocateAddress = get_unused_pfn() << PAGE_SHIFT;
+
+	/* Reset swap signature now */
+	erase_swap_signature();
 	copy_bounce_and_boot_kernel();
 	/* Control should not reach here */
 
