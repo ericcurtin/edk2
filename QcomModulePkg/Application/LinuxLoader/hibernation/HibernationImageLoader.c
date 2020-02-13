@@ -1056,7 +1056,7 @@ static int check_for_valid_header(void)
 
 	if (verify_swap_partition()) {
 		printf("Failled verify_swap_partition\n");
-		return -1;
+		goto read_image_error;
 	}
 
 	if (read_image(0, swsusp_header, 1)) {
@@ -1070,6 +1070,11 @@ static int check_for_valid_header(void)
 	}
 
 	printf("Image slot at 0x%lx\n", swsusp_header->image);
+	if (swsusp_header->image != 1) {
+		printf("Invalid swap slot. Aborting hibernation!");
+		goto read_image_error;
+	}
+
 	printf("Signature found. Proceeding with disk read...\n");
 	return 0;
 
@@ -1078,7 +1083,7 @@ read_image_error:
 	return -1;
 }
 
-void erase_swap_signature(void)
+static void erase_swap_signature(void)
 {
 	int status;
 	EFI_BLOCK_IO_PROTOCOL *BlockIo = swap_details.BlockIo;
