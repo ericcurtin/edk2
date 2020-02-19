@@ -1008,6 +1008,8 @@ static void copy_bounce_and_boot_kernel()
 	printf("Kernel entry point = 0x%lx\n", cpu_resume);
 	printf("Relocation code at = 0x%lx\n", relocateAddress);
 
+	BootStatsSetTimeStamp (BS_BL_END);
+
 	/* Shut down UEFI boot services */
 	Status = ShutdownUefiBootServices ();
 	if (EFI_ERROR (Status)) {
