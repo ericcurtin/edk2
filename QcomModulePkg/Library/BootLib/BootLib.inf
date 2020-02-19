@@ -68,6 +68,7 @@
 	LECmdLine.c
 	HypervisorMvCalls.c
 	EarlyEthernet.c
+	EarlyUsbInit.c
 
 [Packages]
 	ArmPkg/ArmPkg.dec
