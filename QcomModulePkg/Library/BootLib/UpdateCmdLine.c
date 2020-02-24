@@ -67,6 +67,8 @@ STATIC CHAR8 *RootCmdLine = " rootwait ro init=";
 STATIC CHAR8 *InitCmdline = INIT_BIN;
 STATIC CHAR8 *SkipRamFs = " skip_initramfs";
 
+STATIC CHAR8 *ResumeCmdLine = NULL;
+
 CHAR8 IPv4AddrBufCmdLine[MAX_IP_ADDR_BUF];
 CHAR8 IPv6AddrBufCmdLine[MAX_IP_ADDR_BUF];
 CHAR8 MacEthAddrBufCmdLine[MAX_IP_ADDR_BUF];
@@ -394,6 +396,21 @@ GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot, BOOLEAN FlashlessBoot,
   return AsciiStrLen (*SysPath);
 }
 
+UINT32
+GetResumeCmdLine(CHAR8 **ResumeCmdLine, CHAR16 *ReqPartition)
+{
+  BOOLEAN MultiSlotBoot;
+  UINT32 len = 0;
+
+  MultiSlotBoot = PartitionHasMultiSlot ((CONST CHAR16 *)L"swap_a");
+  len = GetSystemPath (ResumeCmdLine, MultiSlotBoot, FALSE, FALSE, (CHAR16 *)L"swap_a", (CHAR8 *)"resume");
+  if (len == 0) {
+     DEBUG ((EFI_D_ERROR, "GetSystemPath failed\n"));
+     return 0;
+  }
+  return len;
+}
+
 STATIC
 EFI_STATUS
 UpdateCmdLineParams (UpdateCmdLineParamList *Param,
@@ -560,6 +577,11 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
 
   if (EarlyUsbInitEnabled()) {
     Src = Param->UsbCompCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
+  if (IsHibernationEnabled()) {
+    Src = Param->ResumeCmdLine;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
@@ -774,6 +796,10 @@ skip_BoardSerialNum:
     CmdLineLen += AsciiStrLen (UsbCompositionCmdline);
   }
 
+  if (IsHibernationEnabled()) {
+    CmdLineLen += GetResumeCmdLine(&ResumeCmdLine, (CHAR16 *)L"swap_a");
+  }
+
   Param.Recovery = Recovery;
   Param.MultiSlotBoot = MultiSlotBoot;
   Param.AlarmBoot = AlarmBoot;
@@ -815,6 +841,10 @@ skip_BoardSerialNum:
 
   if (EarlyUsbInitEnabled()) {
     Param.UsbCompCmdLine = UsbCompositionCmdline;
+  }
+
+  if (IsHibernationEnabled()) {
+    Param.ResumeCmdLine = ResumeCmdLine;
   }
 
   Status = UpdateCmdLineParams (&Param, FinalCmdLine);
