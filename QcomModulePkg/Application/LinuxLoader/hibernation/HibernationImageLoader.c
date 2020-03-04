@@ -1106,18 +1106,18 @@ void BootIntoHibernationImage(BootInfo *Info)
 	printf("Entrying Hibernation restore\n");
 
 	if (check_for_valid_header() < 0)
-		return;
+		goto err;
 
 	Status = LoadImageAndAuth (Info, TRUE);
 	if (Status != EFI_SUCCESS) {
 		DEBUG ((EFI_D_ERROR, "Failed to set ROT and Bootstate : %r\n", Status));
-		return;
+		goto err;
 	}
 
 	ret = restore_snapshot_image();
 	if (ret) {
 		printf("Failed restore_snapshot_image \n");
-		return;
+		goto err;
 	}
 
 	relocateAddress = get_unused_pfn() << PAGE_SHIFT;
@@ -1127,6 +1127,11 @@ void BootIntoHibernationImage(BootInfo *Info)
 	copy_bounce_and_boot_kernel();
 	/* Control should not reach here */
 
+err:	/*
+	 * Erase swap signature to avoid kernel restoring the
+	 * hibernation image
+	 */
+	erase_swap_signature();
 	return;
 }
 #endif
