@@ -41,6 +41,7 @@
 #include <Protocol/EFIPmicPon.h>
 #include <Protocol/Print2.h>
 #include <Library/HypervisorMvCalls.h>
+#include <Library/EarlyUsbInit.h>
 
 #include "AutoGen.h"
 #include <DeviceInfo.h>
@@ -557,6 +558,11 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
+  if (EarlyUsbInitEnabled()) {
+    Src = Param->UsbCompCmdLine;
+    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  }
+
   return EFI_SUCCESS;
 }
 
@@ -592,6 +598,8 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   UINT32 LEVerityCmdLineLen = 0;
   CHAR8 *EarlyServicesStr = NULL;
   CHAR8 *ModemPathStr = NULL;
+  CHAR8 UsbCompositionCmdline[COMPOSITION_CMDLINE_LEN]= "\0";
+
   if (FlashlessBoot)
     goto skip_BoardSerialNum;
 
@@ -761,6 +769,11 @@ skip_BoardSerialNum:
     CmdLineLen += AsciiStrLen (MacEthAddrBufCmdLine);
   }
 
+  if (EarlyUsbInitEnabled()) {
+    GetEarlyUsbCmdlineParam(UsbCompositionCmdline);
+    CmdLineLen += AsciiStrLen (UsbCompositionCmdline);
+  }
+
   Param.Recovery = Recovery;
   Param.MultiSlotBoot = MultiSlotBoot;
   Param.AlarmBoot = AlarmBoot;
@@ -798,6 +811,10 @@ skip_BoardSerialNum:
     Param.EarlyIPv4CmdLine = IPv4AddrBufCmdLine;
     Param.EarlyIPv6CmdLine = IPv6AddrBufCmdLine;
     Param.EarlyEthMacCmdLine = MacEthAddrBufCmdLine;
+  }
+
+  if (EarlyUsbInitEnabled()) {
+    Param.UsbCompCmdLine = UsbCompositionCmdline;
   }
 
   Status = UpdateCmdLineParams (&Param, FinalCmdLine);

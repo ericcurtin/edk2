@@ -381,14 +381,18 @@ static int get_conventional_memory_ranges(void)
 	return 0;
 }
 
-static int read_image(unsigned long offset, VOID *Buff, int nr_pages)
-{
+struct partition_details {
+	EFI_BLOCK_IO_PROTOCOL *BlockIo;
+	EFI_HANDLE *Handle;
+	int blocksPerPage;
+};
+static struct partition_details swap_details;
 
+static int verify_swap_partition(void)
+{
 	int Status;
 	EFI_BLOCK_IO_PROTOCOL *BlockIo = NULL;
 	EFI_HANDLE *Handle = NULL;
-	EFI_LBA Lba;
-	static int Page2block;
 
 	Status = PartitionGetInfo (SWAP_PARTITION_NAME, &BlockIo, &Handle);
 	if (Status != EFI_SUCCESS)
@@ -409,10 +413,20 @@ static int read_image(unsigned long offset, VOID *Buff, int nr_pages)
 		printf("Integer overflow while multiplying LastBlock and BlockSize\n");
 		return -1;
 	}
-	if (!Page2block)
-		Page2block = EFI_PAGE_SIZE / BlockIo->Media->BlockSize;
 
-	Lba = offset * Page2block;
+	swap_details.BlockIo = BlockIo;
+	swap_details.Handle = Handle;
+	swap_details.blocksPerPage = EFI_PAGE_SIZE / BlockIo->Media->BlockSize;
+	return 0;
+}
+
+static int read_image(unsigned long offset, VOID *Buff, int nr_pages)
+{
+	int Status;
+	EFI_BLOCK_IO_PROTOCOL *BlockIo = swap_details.BlockIo;
+	EFI_LBA Lba;
+
+	Lba = offset * swap_details.blocksPerPage;
 	Status = BlockIo->ReadBlocks (BlockIo,
 			BlockIo->Media->MediaId,
 			Lba,
@@ -994,6 +1008,8 @@ static void copy_bounce_and_boot_kernel()
 	printf("Kernel entry point = 0x%lx\n", cpu_resume);
 	printf("Relocation code at = 0x%lx\n", relocateAddress);
 
+	BootStatsSetTimeStamp (BS_BL_END);
+
 	/* Shut down UEFI boot services */
 	Status = ShutdownUefiBootServices ();
 	if (EFI_ERROR (Status)) {
@@ -1035,9 +1051,14 @@ static void copy_bounce_and_boot_kernel()
 static int check_for_valid_header(void)
 {
 	swsusp_header = AllocatePages(1);
-	if(!swsusp_header) {
+	if (!swsusp_header) {
 		printf("Memory alloc failed Line %d\n", __LINE__);
 		return -1;
+	}
+
+	if (verify_swap_partition()) {
+		printf("Failled verify_swap_partition\n");
+		goto read_image_error;
 	}
 
 	if (read_image(0, swsusp_header, 1)) {
@@ -1045,18 +1066,35 @@ static int check_for_valid_header(void)
 		goto read_image_error;
 	}
 
-	if(memcmp(HIBERNATE_SIG, swsusp_header->sig, 10)) {
+	if (memcmp(HIBERNATE_SIG, swsusp_header->sig, 10)) {
 		printf("Signature not found. Aborting hibernation\n");
 		goto read_image_error;
 	}
 
 	printf("Image slot at 0x%lx\n", swsusp_header->image);
+	if (swsusp_header->image != 1) {
+		printf("Invalid swap slot. Aborting hibernation!");
+		goto read_image_error;
+	}
+
 	printf("Signature found. Proceeding with disk read...\n");
 	return 0;
 
 read_image_error:
 	FreePages(swsusp_header, 1);
 	return -1;
+}
+
+static void erase_swap_signature(void)
+{
+	int status;
+	EFI_BLOCK_IO_PROTOCOL *BlockIo = swap_details.BlockIo;
+
+	swsusp_header->sig[0] = ' ';
+	status = BlockIo->WriteBlocks (BlockIo, BlockIo->Media->MediaId, 0,
+			BlockIo->Media->BlockSize, (VOID*)swsusp_header);
+	if (status != EFI_SUCCESS)
+		printf("Failed to erase swap signature\n");
 }
 
 void BootIntoHibernationImage(BootInfo *Info)
@@ -1068,24 +1106,32 @@ void BootIntoHibernationImage(BootInfo *Info)
 	printf("Entrying Hibernation restore\n");
 
 	if (check_for_valid_header() < 0)
-		return;
+		goto err;
 
 	Status = LoadImageAndAuth (Info, TRUE);
 	if (Status != EFI_SUCCESS) {
 		DEBUG ((EFI_D_ERROR, "Failed to set ROT and Bootstate : %r\n", Status));
-		return;
+		goto err;
 	}
 
 	ret = restore_snapshot_image();
 	if (ret) {
 		printf("Failed restore_snapshot_image \n");
-		return;
+		goto err;
 	}
 
 	relocateAddress = get_unused_pfn() << PAGE_SHIFT;
+
+	/* Reset swap signature now */
+	erase_swap_signature();
 	copy_bounce_and_boot_kernel();
 	/* Control should not reach here */
 
+err:	/*
+	 * Erase swap signature to avoid kernel restoring the
+	 * hibernation image
+	 */
+	erase_swap_signature();
 	return;
 }
 #endif
