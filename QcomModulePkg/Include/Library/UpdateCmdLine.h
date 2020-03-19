@@ -87,6 +87,7 @@ typedef struct UpdateCmdLineParamList {
   CHAR8 *EarlyServicesCmdLine;
   CHAR8 *ModemPathCmdLine;
   CHAR8 *UsbCompCmdLine;
+  CHAR8 *ResumeCmdLine;
 } UpdateCmdLineParamList;
 
 EFI_STATUS
@@ -104,4 +105,7 @@ UINT32
 GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot,
 	       BOOLEAN FlashlessBoot, BOOLEAN BootIntoRecovery,
 	       CHAR16 *ReqPartition, CHAR8 *Key);
+
+UINT32
+GetResumeCmdLine(CHAR8 **ResumeCmdLine, CHAR16 *ReqPartition);
 #endif
