@@ -990,7 +990,7 @@ BootLinux (BootInfo *Info)
   CHAR16 *PartitionName = NULL;
   BOOLEAN Recovery = FALSE;
   BOOLEAN AlarmBoot = FALSE;
-  BOOLEAN FlashlessBoot = Info->FlashlessBoot;
+  BOOLEAN FlashlessBoot ;
 
   LINUX_KERNEL LinuxKernel;
   LINUX_KERNEL32 LinuxKernel32;
@@ -1021,6 +1021,7 @@ BootLinux (BootInfo *Info)
   PartitionName = Info->Pname;
   Recovery = Info->BootIntoRecovery;
   AlarmBoot = Info->BootReasonAlarm;
+  FlashlessBoot = Info->FlashlessBoot;
 
   FfbmStr[0] = '\0';
   if (FlashlessBoot)
