@@ -6,6 +6,9 @@
 
 struct ufdt *ufdt_construct(void *fdtp) {
   struct ufdt *res_ufdt = dto_malloc(sizeof(struct ufdt));
+
+  if (!res_ufdt)
+	return NULL;
   res_ufdt->fdtp = fdtp;
   res_ufdt->root = NULL;
 
