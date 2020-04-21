@@ -2915,6 +2915,49 @@ CmdSetUsbCompositionPid (CONST CHAR8 *Arg, VOID *Data, UINT32 Size)
 }
 #endif
 
+#if HIBERNATION_SUPPORT
+STATIC VOID
+CmdGoldenSnapshot (CONST CHAR8 *Arg, VOID *Data, UINT32 Size)
+{
+  EFI_STATUS Status;
+  CHAR8 *Ptr = NULL;
+  CONST CHAR8 *Delim = " ";
+
+  if (Arg) {
+    /* Expect a string "enable" or "disable" */
+    if ((AsciiStrLen (Arg)) < 7 || (AsciiStrLen (Arg)) > 8 ) {
+      FastbootFail ("Invalid input entered");
+      return;
+    }
+    Ptr = AsciiStrStr (Arg, Delim);
+    Ptr++;
+  } else {
+    FastbootFail ("Invalid input entered");
+    return;
+  }
+
+  if (!AsciiStrCmp (Ptr, "enable")) {
+    /* Set a magic value 200 to denote if it is golden image */
+    Status = SetSnapshotGolden (200);
+  }
+  else if (!AsciiStrCmp (Ptr, "disable")) {
+    Status = SetSnapshotGolden (0);
+  }
+  else {
+    FastbootFail ("Invalid input entered");
+    return;
+  }
+
+  if (Status != EFI_SUCCESS) {
+    FastbootFail ("Failed to update golden-snapshot flag");
+  }
+  else {
+    FastbootOkay ("Golden-snapshot flag updated");
+  }
+   return;
+}
+#endif
+
 STATIC VOID
 CmdOemDevinfo (CONST CHAR8 *arg, VOID *data, UINT32 sz)
 {
@@ -2942,6 +2985,14 @@ CmdOemDevinfo (CONST CHAR8 *arg, VOID *data, UINT32 sz)
     FastbootInfo (DeviceInfo);
     WaitForTransferComplete ();
   }
+
+  if(IsHibernationEnabled()) {
+    AsciiSPrint (DeviceInfo, sizeof (DeviceInfo), "Erase swap on restore: %a",
+		 IsSnapshotGolden () ? "true" : "false");
+    FastbootInfo (DeviceInfo);
+    WaitForTransferComplete ();
+  }
+
   FastbootOkay ("");
 }
 
@@ -3384,6 +3435,9 @@ FastbootCommandSetup (IN VOID *Base, IN UINT64 Size)
       {"oem device-info", CmdOemDevinfo},
 #ifdef TARGET_SUPPORTS_EARLY_USB_INIT
       {"oem usb-pid", CmdSetUsbCompositionPid},
+#endif
+#if HIBERNATION_SUPPORT
+      {"oem golden-snapshot", CmdGoldenSnapshot},
 #endif
       {"continue", CmdContinue},
       {"reboot", CmdReboot},

@@ -1123,7 +1123,9 @@ void BootIntoHibernationImage(BootInfo *Info)
 	relocateAddress = get_unused_pfn() << PAGE_SHIFT;
 
 	/* Reset swap signature now */
-	erase_swap_signature();
+	if (!IsSnapshotGolden())
+		erase_swap_signature();
+
 	copy_bounce_and_boot_kernel();
 	/* Control should not reach here */
 
@@ -1131,7 +1133,8 @@ err:	/*
 	 * Erase swap signature to avoid kernel restoring the
 	 * hibernation image
 	 */
-	erase_swap_signature();
+	if (!IsSnapshotGolden())
+		erase_swap_signature();
 	return;
 }
 #endif
