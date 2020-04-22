@@ -1087,13 +1087,13 @@ read_image_error:
 
 static void erase_swap_signature(void)
 {
-	int status;
+	EFI_STATUS Status;
 	EFI_BLOCK_IO_PROTOCOL *BlockIo = swap_details.BlockIo;
 
 	swsusp_header->sig[0] = ' ';
-	status = BlockIo->WriteBlocks (BlockIo, BlockIo->Media->MediaId, 0,
-			BlockIo->Media->BlockSize, (VOID*)swsusp_header);
-	if (status != EFI_SUCCESS)
+	Status = BlockIo->WriteBlocks (BlockIo, BlockIo->Media->MediaId, 0,
+			EFI_PAGE_SIZE, (VOID*)swsusp_header);
+	if (Status != EFI_SUCCESS)
 		printf("Failed to erase swap signature\n");
 }
 
