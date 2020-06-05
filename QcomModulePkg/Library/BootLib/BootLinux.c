@@ -52,6 +52,42 @@ STATIC QCOM_SCM_MODE_SWITCH_PROTOCOL *pQcomScmModeSwitchProtocol = NULL;
 STATIC BOOLEAN BootDevImage;
 STATIC BOOLEAN IsVmComputed = FALSE;
 
+STATIC VOID
+SetLinuxBootCpu (UINT32 BootCpu)
+{
+  EFI_STATUS Status;
+  Status = gRT->SetVariable (L"DestinationCore",
+		&gQcomTokenSpaceGuid,
+		(EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_NON_VOLATILE |
+		EFI_VARIABLE_RUNTIME_ACCESS),
+		sizeof(UINT32),
+		(void*)(UINT32*)&BootCpu);
+
+  if (Status != EFI_SUCCESS) {
+       DEBUG ((EFI_D_ERROR, "Error: Failed to set Linux boot cpu:%d\n", BootCpu));
+   } else if (Status == EFI_SUCCESS) {
+       DEBUG ((EFI_D_INFO, "Switching to physical CPU:%d for Booting Linux\n", BootCpu));
+   }
+
+  return;
+}
+
+#ifdef LINUX_BOOT_CPU_SELECTION_ENABLED
+#define BootCpuId	LINUX_BOOT_CPU_ID
+STATIC BOOLEAN
+BootCpuSelectionEnabled (VOID)
+{
+  return TRUE;
+}
+#else
+#define BootCpuId	0
+STATIC BOOLEAN
+BootCpuSelectionEnabled (VOID)
+{
+  return FALSE;
+}
+#endif
+
 /* To set load addresses, callers should make sure to initialize the
  * BootParamlistPtr before calling this function */
 UINT64 SetandGetLoadAddr (BootParamlist *BootParamlistPtr, AddrType Type)
@@ -990,7 +1026,7 @@ BootLinux (BootInfo *Info)
   CHAR16 *PartitionName = NULL;
   BOOLEAN Recovery = FALSE;
   BOOLEAN AlarmBoot = FALSE;
-  BOOLEAN FlashlessBoot = Info->FlashlessBoot;
+  BOOLEAN FlashlessBoot ;
 
   LINUX_KERNEL LinuxKernel;
   LINUX_KERNEL32 LinuxKernel32;
@@ -1021,6 +1057,7 @@ BootLinux (BootInfo *Info)
   PartitionName = Info->Pname;
   Recovery = Info->BootIntoRecovery;
   AlarmBoot = Info->BootReasonAlarm;
+  FlashlessBoot = Info->FlashlessBoot;
 
   FfbmStr[0] = '\0';
   if (FlashlessBoot)
@@ -1148,6 +1185,8 @@ skip_FfbmStr:
     UINT32 FullCmdLen = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
     CHAR8* FullCmdLine = AllocateZeroPool (FullCmdLen);
 
+    if (!FullCmdLine)
+	return EFI_OUT_OF_RESOURCES;
     AsciiStrCpyS (FullCmdLine, FullCmdLen, BootParamlistPtr.CmdLine);
     AsciiStrCatS (FullCmdLine, FullCmdLen, BootParamlistPtr.ExtraCmdLine);
     BootParamlistPtr.CmdLine = FullCmdLine;
@@ -1209,6 +1248,9 @@ skip_FfbmStr:
     if (!EFI_ERROR (Status))
       IsModeSwitch = TRUE;
   }
+
+  if(BootCpuSelectionEnabled())
+		  SetLinuxBootCpu(BootCpuId);
 
   DEBUG ((EFI_D_INFO, "\nShutting Down UEFI Boot Services: %lu ms\n",
           GetTimerCountms ()));

@@ -6,6 +6,9 @@
 
 struct ufdt *ufdt_construct(void *fdtp) {
   struct ufdt *res_ufdt = dto_malloc(sizeof(struct ufdt));
+
+  if (!res_ufdt)
+	return NULL;
   res_ufdt->fdtp = fdtp;
   res_ufdt->root = NULL;
 
@@ -25,6 +28,9 @@ static struct ufdt_node *ufdt_new_node(void *fdtp, int node_offset) {
 
   fdt32_t *fdt_tag_ptr =
       (fdt32_t *)fdt_offset_ptr(fdtp, node_offset, sizeof(fdt32_t));
+
+  if (!fdt_tag_ptr)
+	return NULL;
   struct ufdt_node *res = ufdt_node_construct(fdtp, fdt_tag_ptr);
   return res;
 }

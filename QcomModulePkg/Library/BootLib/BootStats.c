@@ -40,6 +40,7 @@ STATIC UINT32 KernelEntry;
 STATIC UINT32 KernelLoadStart;
 STATIC UINT32 KernelLoadDone;
 STATIC UINT32 KernelAuthStart;
+STATIC UINT32 KernelAuthDone;
 STATIC UINT64 SharedImemAddress;
 STATIC UINT64 MpmTimerBase;
 STATIC UINT64 BsImemAddress;
@@ -115,18 +116,18 @@ BootStatsSetTimeStamp (BS_ENTRY BootStatId)
       if (KernelLoadDone) {
         WRITEL (BootStatImemAddress, KernelLoadDone);
       }
-      BootStatImemAddress = BsImemAddress + (sizeof (UINT32) * BS_KERNEL_LOAD_TIME);
-      BootStatClockCount = READL (MpmTimerBase);
-      if (BootStatClockCount) {
-        WRITEL (BootStatImemAddress, (BootStatClockCount - KernelLoadStart));
-      }
       DEBUG ((EFI_D_VERBOSE, "BootStats: ID-%d: Kernel Load Done:%u\n",
 	       BootStatId, KernelLoadDone));
       return;
     }
 
     if (BootStatId == BS_BOOTIMAGE_CHECKSUM_START) {
+      BootStatImemAddress =
+          BsImemAddress + (sizeof (UINT32) * BS_BOOTIMAGE_CHECKSUM_START);
       KernelAuthStart = READL (MpmTimerBase);
+      if (KernelAuthStart) {
+	WRITEL (BootStatImemAddress, KernelAuthStart);
+      }
       DEBUG ((EFI_D_VERBOSE, "BootStats: ID-%d: Kernel Auth Start:%u\n",
               BootStatId, KernelAuthStart));
       return;
@@ -134,13 +135,13 @@ BootStatsSetTimeStamp (BS_ENTRY BootStatId)
 
     if (BootStatId == BS_BOOTIMAGE_CHECKSUM_DONE) {
       BootStatImemAddress =
-          BsImemAddress + (sizeof (UINT32) * (BS_BOOTIMAGE_CHECKSUM_TIME));
-      BootStatClockCount = READL (MpmTimerBase);
-      if (BootStatClockCount) {
-        WRITEL (BootStatImemAddress, (BootStatClockCount - KernelAuthStart));
+          BsImemAddress + (sizeof (UINT32) * (BS_BOOTIMAGE_CHECKSUM_DONE));
+      KernelAuthDone = READL (MpmTimerBase);
+      if (KernelAuthDone) {
+        WRITEL (BootStatImemAddress, KernelAuthDone);
       }
       DEBUG ((EFI_D_VERBOSE, "BootStats: ID-%d: Kernel Auth Done:%u\n",
-              BootStatId, BootStatClockCount));
+              BootStatId, KernelAuthDone));
       return;
     }
 

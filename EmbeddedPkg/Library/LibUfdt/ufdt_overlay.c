@@ -137,6 +137,8 @@ static void *ufdt_get_fixup_location(struct ufdt *tree, const char *fixup) {
    * dto_malloc a copy and split it up.
    */
   path = dto_strdup(fixup);
+  if (!path)
+	return NULL;
   prop_ptr = dto_strchr(path, ':');
   if (prop_ptr == NULL) {
     dto_error("Missing property part in '%s'\n", path);

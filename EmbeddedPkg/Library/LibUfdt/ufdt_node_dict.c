@@ -86,6 +86,8 @@ static int ufdt_node_dict_resize(struct ufdt_node_dict *dict) {
   struct ufdt_node **new_nodes =
       dto_malloc(new_size * sizeof(struct ufdt_node *));
 
+  if (!new_nodes)
+	return EFI_OUT_OF_RESOURCES;
   dto_memset(new_nodes, 0, new_size * sizeof(struct ufdt_node *));
 
   for (int i = 0; i < dict->mem_size; i++) {
