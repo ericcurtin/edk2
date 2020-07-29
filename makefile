@@ -74,6 +74,10 @@ else
 	TARGET_ARCH_ARM64 := 1
 endif
 
+ifeq ($(ABL_LOAD_ADDRESS_BELOW_256MB), true)
+	LOAD_ADDRESS := 0X8B500000
+endif
+
 ifeq ($(ENABLE_LE_VARIANT), true)
 	ENABLE_LE_VARIANT := 1
 else
