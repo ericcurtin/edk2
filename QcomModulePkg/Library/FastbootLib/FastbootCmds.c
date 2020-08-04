@@ -18,7 +18,7 @@ found at
  * Copyright (c) 2009, Google Inc.
  * All rights reserved.
  *
- * Copyright (c) 2015 - 2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015 - 2020, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -169,6 +169,7 @@ STATIC EFI_EVENT UsbTimerEvent;
 #endif
 
 STATIC UINT64 MaxDownLoadSize = 0;
+STATIC UINT64 TotalMaxDownLoadSize = 0;
 
 STATIC INT32 Lun = NO_LUN;
 STATIC BOOLEAN LunSet;
@@ -2196,13 +2197,18 @@ FastbootCmdsInit (VOID)
   }
 
   do {
+    TotalMaxDownLoadSize = MaxDownLoadSize;
     // Try allocating 3/4th of free memory available.
     MaxDownLoadSize = EFI_FREE_MEM_DIVISOR (MaxDownLoadSize);
     MaxDownLoadSize = LOCAL_ROUND_TO_PAGE (MaxDownLoadSize, EFI_PAGE_SIZE);
     if (MaxDownLoadSize < MIN_BUFFER_SIZE) {
-      DEBUG ((EFI_D_ERROR,
-        "ERROR: Allocation fail for minimim buffer for fastboot\n"));
-      return EFI_OUT_OF_RESOURCES;
+      if (TotalMaxDownLoadSize < MIN_BUFFER_SIZE) {
+        DEBUG ((EFI_D_ERROR,
+          "ERROR: Allocation fail for minimim buffer for fastboot\n"));
+        return EFI_OUT_OF_RESOURCES;
+      }
+      else
+        MaxDownLoadSize = MIN_BUFFER_SIZE;
     }
 
     /* If available buffer on target is more than max buffer size,
