@@ -248,6 +248,8 @@ struct ufdt *fdt_to_ufdt(void *fdtp, size_t fdt_size) {
   (void)(fdt_size); // unused parameter
 
   struct ufdt *res_tree = ufdt_construct(fdtp);
+  if(!res_tree)
+	return NULL;
 
   int start_offset = fdt_path_offset(fdtp, "/");
   if (start_offset < 0) {

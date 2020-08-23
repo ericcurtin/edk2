@@ -25,7 +25,7 @@
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#if HIBERNATION_SUPPORT
+#if HIBERNATION_SUPPORT_INSECURE
 
 #define __aligned(x)	__attribute__((aligned(x)))
 #define __packed	__attribute__((packed))

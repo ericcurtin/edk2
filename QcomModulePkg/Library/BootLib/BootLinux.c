@@ -2,7 +2,7 @@
  * Copyright (c) 2009, Google Inc.
  * All rights reserved.
  *
- * Copyright (c) 2009-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2020, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -665,8 +665,6 @@ GZipPkgCheck (BootParamlist *BootParamlistPtr)
       BootParamlistPtr->PatchedKernelHdrSize = PATCHED_KERNEL_HEADER_SIZE;
       Kptr = (struct kernel64_hdr *)((VOID *)Kptr +
                  BootParamlistPtr->PatchedKernelHdrSize);
-      gBS->CopyMem ((VOID *)BootParamlistPtr->KernelLoadAddr, (VOID *)Kptr,
-                 BootParamlistPtr->KernelSize);
     }
 
     if (Kptr->magic_64 != KERNEL64_HDR_MAGIC) {
@@ -1736,7 +1734,7 @@ BOOLEAN IsDefinedMTDUbiBebLimit (VOID)
 }
 #endif
 
-#if HIBERNATION_SUPPORT
+#if HIBERNATION_SUPPORT_INSECURE
 BOOLEAN IsHibernationEnabled (VOID)
 {
   return TRUE;
