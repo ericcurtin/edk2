@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2019, 2021 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -219,4 +219,5 @@ SetActiveSlot (Slot *NewSlot, BOOLEAN ResetSuccessBit);
 BOOLEAN IsCurrentSlotBootable (VOID);
 EFI_STATUS HandleActiveSlotUnbootable (VOID);
 EFI_STATUS ClearUnbootable (VOID);
+UINT64 GetPartitionSize (EFI_BLOCK_IO_PROTOCOL *BlockIo);
 #endif

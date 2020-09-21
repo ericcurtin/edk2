@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2019, 2021 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -1027,7 +1027,11 @@ GetOvrdDtb ( VOID **DtboImgBuffer)
   }
 
   BlockIo = HandleInfoList[0].BlkIo;
-  DtboImgSz = (BlockIo->Media->LastBlock + 1) * BlockIo->Media->BlockSize;
+  DtboImgSz = GetPartitionSize (BlockIo);
+  if (!DtboImgSz) {
+    Status = EFI_BAD_BUFFER_SIZE;
+    goto err;
+  }
   *DtboImgBuffer = AllocateZeroPool (DtboImgSz);
   if (*DtboImgBuffer == NULL) {
     DEBUG ((EFI_D_ERROR, "Override DTB: Buffer allocation failure\n"));
