@@ -63,9 +63,9 @@ STATIC CONST CHAR8 *AlarmBootCmdLine = " androidboot.alarmboot=true";
 
 /*Send slot suffix in cmdline with which we have booted*/
 STATIC CHAR8 *AndroidSlotSuffix = " androidboot.slot_suffix=";
-STATIC CHAR8 *RootCmdLine = " rootwait ro init=";
-STATIC CHAR8 *InitCmdline = INIT_BIN;
-STATIC CHAR8 *SkipRamFs = " skip_initramfs";
+// STATIC CHAR8 *RootCmdLine = " rootwait ro init=";
+// STATIC CHAR8 *InitCmdline = INIT_BIN;
+// STATIC CHAR8 *SkipRamFs = " skip_initramfs";
 
 STATIC CHAR8 *ResumeCmdLine = NULL;
 
@@ -518,26 +518,26 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
-  if ((IsBuildAsSystemRootImage () &&
-      !Param->MultiSlotBoot) ||
-      (Param->MultiSlotBoot &&
-      !IsBootDevImage ())) {
-
-       /* Skip Initramfs*/
-       if (!IsDynamicPartitionSupport () &&
-           !Param->Recovery) {
-         Src = Param->SkipRamFs;
-         AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-       }
-
-     /* Add root command line */
-     Src = Param->RootCmdLine;
-     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-
-     /* Add init value*/
-     Src = Param->InitCmdline;
-     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-   }
+  // if ((IsBuildAsSystemRootImage () &&
+  //     !Param->MultiSlotBoot) ||
+  //     (Param->MultiSlotBoot &&
+  //     !IsBootDevImage ())) {
+  //
+  //      /* Skip Initramfs*/
+  //      if (!IsDynamicPartitionSupport () &&
+  //          !Param->Recovery) {
+  //        Src = Param->SkipRamFs;
+  //        AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  //      }
+  //
+  //    /* Add root command line */
+  //    Src = Param->RootCmdLine;
+  //    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  //
+  //    /* Add init value*/
+  //    Src = Param->InitCmdline;
+  //    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+  //  }
 
   if (Param->DtboIdxStr != NULL) {
     Src = Param->DtboIdxStr;
@@ -739,17 +739,17 @@ skip_BoardSerialNum:
     CmdLineLen += AsciiStrLen (AndroidSlotSuffix) + MAX_SLOT_SUFFIX_SZ;
   }
 
-  if ((IsBuildAsSystemRootImage () &&
-      !MultiSlotBoot) ||
-      (MultiSlotBoot &&
-      !IsBootDevImage ())) {
-    CmdLineLen += AsciiStrLen (RootCmdLine);
-    CmdLineLen += AsciiStrLen (InitCmdline);
-
-       if (!IsDynamicPartitionSupport () &&
-           !Recovery)
-         CmdLineLen += AsciiStrLen (SkipRamFs);
-  }
+  // if ((IsBuildAsSystemRootImage () &&
+  //     !MultiSlotBoot) ||
+  //     (MultiSlotBoot &&
+  //     !IsBootDevImage ())) {
+  //   CmdLineLen += AsciiStrLen (RootCmdLine);
+  //   CmdLineLen += AsciiStrLen (InitCmdline);
+  //
+  //      if (!IsDynamicPartitionSupport () &&
+  //          !Recovery)
+  //        CmdLineLen += AsciiStrLen (SkipRamFs);
+  // }
 
   GetDisplayCmdline ();
   CmdLineLen += AsciiStrLen (DisplayCmdLine);
@@ -836,9 +836,9 @@ skip_BoardSerialNum:
   Param.BootDevBuf = BootDevBuf;
   Param.FfbmStr = FfbmStr;
   Param.AndroidSlotSuffix = AndroidSlotSuffix;
-  Param.SkipRamFs = SkipRamFs;
-  Param.RootCmdLine = RootCmdLine;
-  Param.InitCmdline = InitCmdline;
+  // Param.SkipRamFs = SkipRamFs;
+  // Param.RootCmdLine = RootCmdLine;
+  // Param.InitCmdline = InitCmdline;
   Param.DtboIdxStr = DtboIdxStr;
   Param.DtbIdxStr = DtbIdxStr;
   Param.LEVerityCmdLine = LEVerityCmdLine;
