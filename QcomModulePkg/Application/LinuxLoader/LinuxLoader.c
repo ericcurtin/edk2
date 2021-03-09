@@ -308,6 +308,9 @@ flashless_boot:
     }
 
     BootLinux (&Info);
+    // things are not looking good if we got here. Reboot the device
+    // to give it chance to self heal
+    RebootDevice (NORMAL_MODE);
   }
 
 fastboot:
