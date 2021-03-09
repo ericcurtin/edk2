@@ -251,7 +251,7 @@ def LaunchCommand(Command, WorkingDir):
     # if working directory doesn't exist, Popen() will raise an exception
     if not os.path.isdir(WorkingDir):
         EdkLogger.error("build", FILE_NOT_FOUND, ExtraData=WorkingDir)
-    
+    print("OK:LaunchCommand:[{}]\n".format(Command))
     # Command is used as the first Argument in following Popen().
     # It could be a string or sequence. We find that if command is a string in following Popen(),
     # ubuntu may fail with an error message that the command is not found.
