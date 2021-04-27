@@ -272,6 +272,11 @@ STATIC
 BOOLEAN
 IsRootCmdLineUpdated (BootInfo *Info)
 {
+// Ubuntu Core cmdline does not have specified "root=", and does not support
+// detection of system path, report root is alread updated
+#if UBUNTU_CORE_BOOT
+  return TRUE;
+#else
   CHAR8* ImageCmdLine = NULL;
 
   ImageCmdLine =
@@ -283,6 +288,7 @@ IsRootCmdLineUpdated (BootInfo *Info)
   } else {
     return FALSE;
   }
+#endif
 }
 
 STATIC EFI_STATUS
