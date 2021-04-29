@@ -63,9 +63,9 @@ STATIC CONST CHAR8 *AlarmBootCmdLine = " androidboot.alarmboot=true";
 
 /*Send slot suffix in cmdline with which we have booted*/
 STATIC CHAR8 *AndroidSlotSuffix = " androidboot.slot_suffix=";
-// STATIC CHAR8 *RootCmdLine = " rootwait ro init=";
-// STATIC CHAR8 *InitCmdline = INIT_BIN;
-// STATIC CHAR8 *SkipRamFs = " skip_initramfs";
+STATIC CHAR8 *RootCmdLine = " rootwait ro init=";
+STATIC CHAR8 *InitCmdline = INIT_BIN;
+STATIC CHAR8 *SkipRamFs = " skip_initramfs";
 
 STATIC CHAR8 *ResumeCmdLine = NULL;
 
@@ -76,11 +76,13 @@ CHAR8 MacEthAddrBufCmdLine[MAX_IP_ADDR_BUF];
 /* Display command line related structures */
 #define MAX_DISPLAY_CMD_LINE 256
 STATIC CHAR8 DisplayCmdLine[MAX_DISPLAY_CMD_LINE];
+#if !defined(UBUNTU_CORE_BOOT)
 STATIC UINTN DisplayCmdLineLen = sizeof (DisplayCmdLine);
 
 #define MAX_DTBO_IDX_STR 64
 STATIC CHAR8 *AndroidBootDtboIdx = " androidboot.dtbo_idx=";
 STATIC CHAR8 *AndroidBootDtbIdx = " androidboot.dtb_idx=";
+#endif
 
 STATIC EFI_STATUS
 TargetPauseForBatteryCharge (BOOLEAN *BatteryStatus)
@@ -275,6 +277,7 @@ TargetBatterySocOk (UINT32 *BatteryVoltage)
   }
 }
 
+#if !defined(UBUNTU_CORE_BOOT)
 STATIC VOID GetDisplayCmdline (VOID)
 {
   EFI_STATUS Status;
@@ -286,6 +289,7 @@ STATIC VOID GetDisplayCmdline (VOID)
     DEBUG ((EFI_D_ERROR, "Unable to get Panel Config, %r\n", Status));
   }
 }
+#endif
 
 /*
  * Returns length = 0 when there is failure.
@@ -444,6 +448,7 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
+#if !defined(UBUNTU_CORE_BOOT)
   if (Param->BootDevBuf) {
     Src = Param->BootDeviceCmdLine;
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
@@ -464,11 +469,13 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     Param->BootDevBuf = NULL;
   }
 
+#endif
   Src = Param->UsbSerialCmdLine;
   AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   Src = Param->StrSerialNum;
   AsciiStrCatS (Dst, MaxCmdLineLen, Src);
 
+#if !defined(UBUNTU_CORE_BOOT)
   if (Param->FfbmStr &&
       (Param->FfbmStr[0] != '\0')) {
     Src = Param->AndroidBootMode;
@@ -518,26 +525,26 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
-  // if ((IsBuildAsSystemRootImage () &&
-  //     !Param->MultiSlotBoot) ||
-  //     (Param->MultiSlotBoot &&
-  //     !IsBootDevImage ())) {
-  //
-  //      /* Skip Initramfs*/
-  //      if (!IsDynamicPartitionSupport () &&
-  //          !Param->Recovery) {
-  //        Src = Param->SkipRamFs;
-  //        AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-  //      }
-  //
-  //    /* Add root command line */
-  //    Src = Param->RootCmdLine;
-  //    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-  //
-  //    /* Add init value*/
-  //    Src = Param->InitCmdline;
-  //    AsciiStrCatS (Dst, MaxCmdLineLen, Src);
-  //  }
+  if ((IsBuildAsSystemRootImage () &&
+      !Param->MultiSlotBoot) ||
+      (Param->MultiSlotBoot &&
+      !IsBootDevImage ())) {
+
+       /* Skip Initramfs*/
+       if (!IsDynamicPartitionSupport () &&
+           !Param->Recovery) {
+         Src = Param->SkipRamFs;
+         AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+       }
+
+     /* Add root command line */
+     Src = Param->RootCmdLine;
+     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+
+     /* Add init value*/
+     Src = Param->InitCmdline;
+     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
+   }
 
   if (Param->DtboIdxStr != NULL) {
     Src = Param->DtboIdxStr;
@@ -590,6 +597,7 @@ UpdateCmdLineParams (UpdateCmdLineParamList *Param,
     AsciiStrCatS (Dst, MaxCmdLineLen, Src);
   }
 
+#endif // !defined(UBUNTU_CORE_BOOT)
   return EFI_SUCCESS;
 }
 
@@ -610,7 +618,9 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   UINT32 HaveCmdLine = 0;
   UINT32 PauseAtBootUp = 0;
   CHAR8 SlotSuffixAscii[MAX_SLOT_SUFFIX_SZ];
+#if !defined(UBUNTU_CORE_BOOT)
   BOOLEAN MultiSlotBoot;
+#endif
   CHAR8 ChipBaseBand[CHIP_BASE_BAND_LEN];
   CHAR8 *BootDevBuf = NULL;
   BOOLEAN BatteryStatus;
@@ -618,16 +628,18 @@ UpdateCmdLine (CONST CHAR8 *CmdLine,
   BOOLEAN MdtpActive = FALSE;
   CHAR8 *CvmSystemPtnCmdLine = NULL;
   UpdateCmdLineParamList Param = {0};
+#if !defined(UBUNTU_CORE_BOOT)
   CHAR8 DtboIdxStr[MAX_DTBO_IDX_STR] = "\0";
   CHAR8 DtbIdxStr[MAX_DTBO_IDX_STR] = "\0";
   INT32 DtboIdx = INVALID_PTN;
   INT32 DtbIdx = INVALID_PTN;
+#endif
   CHAR8 *LEVerityCmdLine = NULL;
   UINT32 LEVerityCmdLineLen = 0;
   CHAR8 *EarlyServicesStr = NULL;
   CHAR8 *ModemPathStr = NULL;
   CHAR8 UsbCompositionCmdline[COMPOSITION_CMDLINE_LEN]= "\0";
-
+DEBUG ((EFI_D_ERROR, "OK: UpdateCmdLine-0\n"));
   if (FlashlessBoot)
     goto skip_BoardSerialNum;
 
@@ -703,7 +715,7 @@ skip_BoardSerialNum:
   /* Ignore the EFI_STATUS return value as the default Battery Status = 0 and is
    * not fatal */
   TargetPauseForBatteryCharge (&BatteryStatus);
-
+#if !defined(UBUNTU_CORE_BOOT)
   if (FfbmStr && FfbmStr[0] != '\0') {
     CmdLineLen += AsciiStrLen (AndroidBootMode);
     CmdLineLen += AsciiStrLen (FfbmStr);
@@ -739,17 +751,17 @@ skip_BoardSerialNum:
     CmdLineLen += AsciiStrLen (AndroidSlotSuffix) + MAX_SLOT_SUFFIX_SZ;
   }
 
-  // if ((IsBuildAsSystemRootImage () &&
-  //     !MultiSlotBoot) ||
-  //     (MultiSlotBoot &&
-  //     !IsBootDevImage ())) {
-  //   CmdLineLen += AsciiStrLen (RootCmdLine);
-  //   CmdLineLen += AsciiStrLen (InitCmdline);
-  //
-  //      if (!IsDynamicPartitionSupport () &&
-  //          !Recovery)
-  //        CmdLineLen += AsciiStrLen (SkipRamFs);
-  // }
+  if ((IsBuildAsSystemRootImage () &&
+      !MultiSlotBoot) ||
+      (MultiSlotBoot &&
+      !IsBootDevImage ())) {
+    CmdLineLen += AsciiStrLen (RootCmdLine);
+    CmdLineLen += AsciiStrLen (InitCmdline);
+
+       if (!IsDynamicPartitionSupport () &&
+           !Recovery)
+         CmdLineLen += AsciiStrLen (SkipRamFs);
+  }
 
   GetDisplayCmdline ();
   CmdLineLen += AsciiStrLen (DisplayCmdLine);
@@ -811,9 +823,12 @@ skip_BoardSerialNum:
   if (IsHibernationEnabled()) {
     CmdLineLen += GetResumeCmdLine(&ResumeCmdLine, (CHAR16 *)L"swap_a");
   }
+#endif // !defined(UBUNTU_CORE_BOOT)
 
   Param.Recovery = Recovery;
+#if !defined(UBUNTU_CORE_BOOT)
   Param.MultiSlotBoot = MultiSlotBoot;
+#endif
   Param.AlarmBoot = AlarmBoot;
   Param.MdtpActive = MdtpActive;
   Param.CmdLineLen = CmdLineLen;
@@ -836,11 +851,13 @@ skip_BoardSerialNum:
   Param.BootDevBuf = BootDevBuf;
   Param.FfbmStr = FfbmStr;
   Param.AndroidSlotSuffix = AndroidSlotSuffix;
-  // Param.SkipRamFs = SkipRamFs;
-  // Param.RootCmdLine = RootCmdLine;
-  // Param.InitCmdline = InitCmdline;
+  Param.SkipRamFs = SkipRamFs;
+  Param.RootCmdLine = RootCmdLine;
+  Param.InitCmdline = InitCmdline;
+#if !defined(UBUNTU_CORE_BOOT)
   Param.DtboIdxStr = DtboIdxStr;
   Param.DtbIdxStr = DtbIdxStr;
+#endif
   Param.LEVerityCmdLine = LEVerityCmdLine;
   Param.CvmSystemPtnCmdLine = CvmSystemPtnCmdLine;
   Param.EarlyServicesCmdLine = EarlyServicesStr;
