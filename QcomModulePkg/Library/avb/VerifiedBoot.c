@@ -1436,13 +1436,7 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume)
   } else {
     Slot CurrentSlot = {{0}};
 
-    GUARD (SnapGetTargetBootParams(&CurrentSlot, &Info->SnapCmdLine, IsUnlocked()));
-    // TODO: Bootloader seems to auto rollback to other boot image if boot image is corrupted
-    // TODO: remove folling lines which are more for fallback compatibility to linaro boot
-    if (IsSuffixEmpty (&CurrentSlot)) {
-      GUARD (FindBootableSlot (&CurrentSlot));
-    }
-
+    GUARD (FindBootableSlot (&CurrentSlot));
     if (IsSuffixEmpty (&CurrentSlot)) {
       DEBUG ((EFI_D_ERROR, "No bootable slot\n"));
       return EFI_LOAD_ERROR;
