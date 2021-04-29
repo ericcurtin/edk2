@@ -43,7 +43,7 @@ static uint32_t crc32(uint32_t crc, unsigned char *buf, size_t len)
 static EFI_STATUS MapBootimg(
                        CHAR8 BootimgMatrix[][2][SNAP_NAME_MAX_LEN],
                        UINT32 Rows,
-                       Slot *BootableSlot,
+                       CHAR16 *BootPart,
                        const CHAR8 *KernelSnap
                      );
 static EFI_STATUS LoadRunEnvironment(SNAP_RUN_BOOT_SELECTION_t **BootSelect );
@@ -75,7 +75,7 @@ static EFI_STATUS SaveEnvImageToPartition (
               const CHAR8 *partName
             );
 
-EFI_STATUS SnapGetTargetBootParams(Slot *BootableSlot,
+EFI_STATUS SnapGetTargetBootParams(CHAR16 *BootPart,
                                    CHAR8 **cmdline,
                                    BOOLEAN unlocked
                                  )
@@ -121,7 +121,7 @@ EFI_STATUS SnapGetTargetBootParams(Slot *BootableSlot,
         MapBootimg(
             RecoverySelect->bootimg_matrix,
             SNAP_RECOVERY_BOOTIMG_PART_NUM,
-            BootableSlot,
+            BootPart,
             RecoverySelect->snapd_recovery_system
           );
         *cmdline = cmdline_buf;
@@ -174,7 +174,7 @@ EFI_STATUS SnapGetTargetBootParams(Slot *BootableSlot,
     // map runtime bootimage to the partition
     MapBootimg(BootSelect->bootimg_matrix,
                SNAP_RUN_BOOTIMG_PART_NUM,
-               BootableSlot,
+               BootPart,
                snap_kernel
              );
     *cmdline = cmdline_buf;
@@ -191,11 +191,10 @@ EFI_STATUS SnapGetTargetBootParams(Slot *BootableSlot,
 
 EFI_STATUS MapBootimg( CHAR8 BootimgMatrix[][2][SNAP_NAME_MAX_LEN],
                         UINT32 Rows,
-                        Slot *BootableSlot,
+                        CHAR16 *BootPart,
                         const CHAR8 *KernelSnap
                       )
 {
-    CHAR8 *slot;
     for (size_t n = 0; n < Rows; ++n) {
         if (!AsciiStrnCmp(BootimgMatrix[n][1],
             KernelSnap,
@@ -203,15 +202,8 @@ EFI_STATUS MapBootimg( CHAR8 BootimgMatrix[][2][SNAP_NAME_MAX_LEN],
           )
         ) {
             if (AsciiStrLen(BootimgMatrix[n][0])) {
-                // we need only slot part of partition table:( '_a','_b','_ra','_rb' )
-                slot = AsciiStrStr(BootimgMatrix[n][0], "_");
-                if (slot) {
-                    AsciiStrToUnicodeStr(slot, BootableSlot->Suffix);
-                    return EFI_SUCCESS;
-                } else {
-                    DEBUG ((EFI_D_INFO, "MapBootimg missing partition sufix\n"));
-                    return EFI_NOT_FOUND;
-                }
+                AsciiStrToUnicodeStr(BootimgMatrix[n][0], BootPart);
+                return EFI_SUCCESS;
             }
         }
     }

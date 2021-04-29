@@ -21,7 +21,7 @@
 #include <Library/PartitionTableUpdate.h>
 #include "snappy_boot_v2.h"
 
-EFI_STATUS SnapGetTargetBootParams(Slot *BootableSlot,
+EFI_STATUS SnapGetTargetBootParams(CHAR16 *BootPart,
                                    CHAR8 **cmdline,
                                    BOOLEAN unlocked);
 #endif
