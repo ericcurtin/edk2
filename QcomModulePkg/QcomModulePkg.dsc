@@ -113,6 +113,9 @@
   !if $(VERIFIED_BOOT_LE)
       GCC:*_*_*_CC_FLAGS = -DVERIFIED_BOOT_LE
   !endif
+  !if $(UBUNTU_CORE_BOOT)
+      GCC:*_*_*_CC_FLAGS = -DUBUNTU_CORE_BOOT
+  !endif
   !if $(EARLY_ETH_ENABLED)
       GCC:*_*_*_CC_FLAGS = -DEARLY_ETH_ENABLED
   !endif
