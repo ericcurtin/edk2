@@ -308,9 +308,11 @@ flashless_boot:
     }
 
     BootLinux (&Info);
+#if UBUNTU_CORE_BOOT
     // things are not looking good if we got here. Reboot the device
     // to give it chance to self heal
     RebootDevice (NORMAL_MODE);
+#endif
   }
 
 fastboot:
