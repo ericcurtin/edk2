@@ -1424,6 +1424,9 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume)
 
   /* Get Partition Name*/
   if (!Info->MultiSlotBoot) {
+#if UBUNTU_CORE_BOOT
+    GUARD (SnapGetTargetBootParams(Info->Pname, &Info->SnapCmdLine, IsUnlocked()));
+#else
     if (Info->BootIntoRecovery) {
       DEBUG ((EFI_D_INFO, "Booting Into Recovery Mode\n"));
       StrnCpyS (Info->Pname, ARRAY_SIZE (Info->Pname), L"recovery",
@@ -1433,6 +1436,7 @@ LoadImageAndAuth (BootInfo *Info, BOOLEAN HibernationResume)
       StrnCpyS (Info->Pname, ARRAY_SIZE (Info->Pname), L"boot",
                 StrLen (L"boot"));
     }
+#endif
   } else {
     Slot CurrentSlot = {{0}};
 
