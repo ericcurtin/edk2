@@ -179,13 +179,12 @@ EFI_STATUS SnapGetTargetBootParams(CHAR16 *BootPart,
              );
     *cmdline = cmdline_buf;
     cleanup:
-        // if(RecoverySelect) {
-        //     FreePool(RecoverySelect);
-        // }
-        // if (BootSelect != NULL) {
-        //     FreePool(BootSelect);
-        // }
-        DEBUG ((EFI_D_INFO, "SnapGetTargetBootParams skip cleanup\n"));
+        if(RecoverySelect) {
+            FreePool(RecoverySelect);
+        }
+        if (BootSelect != NULL) {
+            FreePool(BootSelect);
+        }
         return Status;
 }
 
