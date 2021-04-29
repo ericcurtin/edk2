@@ -414,7 +414,7 @@ LoadImageNoAuthWrapper (BootInfo *Info)
       DEBUG ((EFI_D_ERROR, "GetSystemPath failed!\n"));
       return EFI_LOAD_ERROR;
     }
-    // GUARD (AppendVBCmdLine (Info, SystemPath));
+    GUARD (AppendVBCmdLine (Info, SystemPath));
   }
 
   return Status;
