@@ -181,9 +181,11 @@ EFI_STATUS SnapGetTargetBootParams(CHAR16 *BootPart,
     cleanup:
         if(RecoverySelect) {
             FreePool(RecoverySelect);
+            RecoverySelect = NULL;
         }
         if (BootSelect != NULL) {
             FreePool(BootSelect);
+            BootSelect = NULL;
         }
         return Status;
 }
@@ -305,11 +307,7 @@ static EFI_STATUS LoadRunEnvironmentFromPart(const CHAR8 *partName,
 {
     EFI_STATUS Status = EFI_SUCCESS;
     UINT32 crc = 0;
-    // BlockIo = HandleInfoList[0].BlkIo;
-    // BlockIo->Media->BlockSize;
-    DEBUG ((EFI_D_INFO, "snap: aligned size %d\n",
-                        ALIGN_PAGES (sizeof(SNAP_RUN_BOOT_SELECTION_t),
-                        ALIGNMENT_MASK_4KB)));
+
     Status = LoadEnvImageFromPartition( (VOID**)BootSelect,
                                         sizeof(SNAP_RUN_BOOT_SELECTION_t),
                                         partName
@@ -364,11 +362,8 @@ static EFI_STATUS LoadRecoveryEnvironmentFromPart(const CHAR8 *partName,
                             )
 {
     EFI_STATUS Status = EFI_SUCCESS;
+
     UINT32 crc = 0;
-    // BlockIo = HandleInfoList[0].BlkIo;
-    // BlockIo->Media->BlockSize;
-    DEBUG ((EFI_D_INFO, "snap: aligned size %d\n",
-                        ALIGN_PAGES (sizeof(SNAP_RECOVERY_BOOT_SELECTION_t), ALIGNMENT_MASK_4KB)));
     Status = LoadEnvImageFromPartition( (VOID**)RecoverySelect,
                                      sizeof(SNAP_RECOVERY_BOOT_SELECTION_t),
                                      partName
@@ -423,15 +418,12 @@ static EFI_STATUS LoadEnvImageFromPartition(VOID **EnvImage,
                                             const CHAR8 *partName)
 {
     EFI_STATUS Status = EFI_SUCCESS;
-    UINT32 ActualSize = ImageSize + 60;
+    UINT32 ActualSize = ImageSize;
     VOID *image = NULL;
     CHAR16 Pname[MAX_GPT_NAME_SIZE];
 
-    // BlockIo = HandleInfoList[0].BlkIo;
-    // BlockIo->Media->BlockSize;
-    DEBUG ((EFI_D_INFO, "snap: aligned env size %d\n",
-                        ALIGN_PAGES (ActualSize, ALIGNMENT_MASK_4KB)));
-    image = (VOID *) AllocatePages (ALIGN_PAGES (ActualSize, ALIGNMENT_MASK_4KB));
+    // align image buffer by 4kB (sector size)
+    image = (VOID *) AllocateZeroPool(((ActualSize + ALIGNMENT_MASK_4KB - 1) / ALIGNMENT_MASK_4KB) * ALIGNMENT_MASK_4KB );
     if (image == NULL) {
       DEBUG ((EFI_D_ERROR, "snap: Failed to allocate zero pool for EnvImage\n"));
       return EFI_OUT_OF_RESOURCES;
