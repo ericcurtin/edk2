@@ -1328,8 +1328,8 @@ STATIC EFI_STATUS LoadImageAndAuthForLE (BootInfo *Info)
 
     if (!SecureDevice) {
         if (!TargetBuildVariantUser () ) {
-            DEBUG ((EFI_D_INFO, "VB: verification skipped for debug builds\n"));
-            goto skip_verification;
+            DEBUG ((EFI_D_INFO, "VB: verification enforced for all builds\n"));
+            // goto skip_verification;
         }
     }
 
