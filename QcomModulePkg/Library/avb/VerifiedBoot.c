@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -1309,6 +1309,13 @@ STATIC EFI_STATUS LoadImageAndAuthForLE (BootInfo *Info)
     GUARD (VBAllocateCmdLine (Info));
     GUARD (VBCommonInit (Info));
 
+    if (IsTargetUbuntuCore()) {
+      Status = Info->VbIntf->VBDeviceResetState (Info->VbIntf);
+      if (Status != EFI_SUCCESS) {
+        DEBUG ((EFI_D_ERROR, "Error Reseting device state: %r\n", Status));
+        return Status;
+      }
+    }
     /* In case of flashless LE devices images are already loaded and verified
      * by previous bootloaders, so just fill the BootInfo structure with required
      * parameters
