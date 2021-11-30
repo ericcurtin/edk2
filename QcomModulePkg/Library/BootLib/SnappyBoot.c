@@ -54,8 +54,9 @@ static EFI_STATUS LoadRecoveryEnvironment(
 static EFI_STATUS SaveRunEnvironment(
               SNAP_RUN_BOOT_SELECTION_t *BootSelect
             );
-// static EFI_STATUS SaveRecoveryEnvironment(
-//               SNAP_RECOVERY_BOOT_SELECTION_t *RecoverySelect);
+static EFI_STATUS SaveRecoveryEnvironment(
+              SNAP_RECOVERY_BOOT_SELECTION_t *RecoverySelect
+            );
 static EFI_STATUS LoadRunEnvironmentFromPart(
               const CHAR8 *partName,
               SNAP_RUN_BOOT_SELECTION_t **BootSelect
@@ -282,24 +283,27 @@ static EFI_STATUS SaveRunEnvironment(SNAP_RUN_BOOT_SELECTION_t *BootSelect)
 }
 
 // // save recovery environment always to main and backup env
-// static EFI_STATUS SaveRecoveryEnvironment(
-//                                SNAP_RECOVERY_BOOT_SELECTION_t *RecoverySelect)
-// {
-//     // first calculate crc32 for the passed boot selection
-//     RecoverySelect->crc32 = crc32( 0,
-//                       (unsigned char *)RecoverySelect,
-//                       sizeof(SNAP_RECOVERY_BOOT_SELECTION_t) - sizeof(uint32_t));
-//
-//     // if at least one write works, return success, use two variables, that compiler
-//     // does not optimise
-//     int r = SaveEnvImageToPartition( (VOID *)RecoverySelect,
-//                                   sizeof(SNAP_RECOVERY_BOOT_SELECTION_t),
-//                                   SNAP_RECOVERYSELECT_PARTITION);
-//     int rb = SaveEnvImageToPartition( (VOID *)RecoverySelect,
-//                                   sizeof(SNAP_RECOVERY_BOOT_SELECTION_t),
-//                                   SNAP_RECOVERYSELECT_PARTITION "bak");
-//     return r & rb;
-// }
+static EFI_STATUS SaveRecoveryEnvironment(
+                               SNAP_RECOVERY_BOOT_SELECTION_t *RecoverySelect)
+{
+    // first calculate crc32 for the passed boot selection
+    RecoverySelect->crc32 = crc32( 0,
+                      (unsigned char *)RecoverySelect,
+                      sizeof(SNAP_RECOVERY_BOOT_SELECTION_t) - sizeof(uint32_t)
+                    );
+
+    // if at least one write works, return success, use two variables, that compiler
+    // does not optimise
+    EFI_STATUS r = SaveEnvImageToPartition( (VOID *)RecoverySelect,
+                                  sizeof(SNAP_RECOVERY_BOOT_SELECTION_t),
+                                  SNAP_RECOVERYSELECT_PARTITION
+                                );
+    EFI_STATUS rb = SaveEnvImageToPartition( (VOID *)RecoverySelect,
+                                  sizeof(SNAP_RECOVERY_BOOT_SELECTION_t),
+                                  SNAP_RECOVERYSELECT_PARTITION "bak"
+                                );
+    return r == EFI_SUCCESS ? rb : r;
+}
 
 static EFI_STATUS LoadRunEnvironmentFromPart(const CHAR8 *partName,
                                         SNAP_RUN_BOOT_SELECTION_t **BootSelect
