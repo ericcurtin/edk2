@@ -896,6 +896,8 @@ PatchGpt (UINT8 *Gpt,
   UINT32 CrcVal;
   EFI_STATUS Status;
   UINT32 PtnEntryBlks = (MAX_PARTITION_ENTRIES_SZ / BlkSz) + GPT_HDR_BLOCKS;
+  EFI_PARTITION_ENTRY *PartEntry = 0;
+
   NumSectors = DeviceDensity / BlkSz;
 
   /* Update the primary and backup GPT header offset with the sector location */
@@ -926,13 +928,18 @@ PatchGpt (UINT8 *Gpt,
     TotalPart++;
     LastPartitionEntry = (UINT64 *)
       (PrimaryGptHeader + BlkSz + TotalPart * PARTITION_ENTRY_SIZE);
+    PartEntry = (EFI_PARTITION_ENTRY *)LastPartitionEntry;
   }
 
   LastPartOffset =
       (TotalPart - 1) * PARTITION_ENTRY_SIZE + PARTITION_ENTRY_LAST_LBA;
 
-  PUT_LONG_LONG (PrimaryGptHeader + BlkSz + LastPartOffset,
-                 (UINT64) (NumSectors - (PtnEntryBlks + 1)));
+  if (StrnCmp (PartEntry->PartitionName, (CONST CHAR16 *)L"last_parti",
+    StrLen ((CONST CHAR16 *)L"last_parti")) != 0) {
+    PUT_LONG_LONG (PrimaryGptHeader + BlkSz + LastPartOffset,
+                   (UINT64) (NumSectors - (PtnEntryBlks + 1)));
+  }
+
   PUT_LONG_LONG (PrimaryGptHeader + BlkSz + LastPartOffset + PartEntryArrSz,
                  (UINT64) (NumSectors - (PtnEntryBlks + 1)));
 
