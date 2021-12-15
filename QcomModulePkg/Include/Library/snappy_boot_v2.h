@@ -23,6 +23,11 @@
 #define SNAP_BOOTSELECT_VERSION_V2 0x00010010
 #define SNAP_BOOTSELECT_SIGNATURE_RECOVERY ('S' | ('R' << 8) | ('s' << 16) | ('e' << 24))
 
+// device lock states
+#define DEVICE_STATE_UNKNOW   0  // initial device state at first boot
+#define DEVICE_STATE_UNLOCKED 1  // device unlocked
+#define DEVICE_STATE_LOCKED   2  // device locked
+
 /* snappy bootselect partition format structure for run mode */
 typedef struct SNAP_RUN_BOOT_SELECTION {
     /* Should always contain value of SNAP_BOOTSELECT_SIGNATURE_RUN defined in common.h */
@@ -196,6 +201,32 @@ typedef struct SNAP_RECOVERY_BOOT_SELECTION {
        when not defined or empty, default boot.img will be used */
     char bootimg_file_name[SNAP_NAME_MAX_LEN];
 
+    /** try_recovery_system contains the label of a recovery system to be
+     *  tried. This entry is completely transparent to the bootloader and is
+     *  only modified by snapd or snap-bootstrap.
+     */
+    char try_recovery_system[SNAP_NAME_MAX_LEN];
+
+    /** recovery_system_status contains the status of a tried recovery
+     *  systems, which is one of "", "try", "tried". This entry is completely
+     *  transparent to the bootloader and is only modified by snapd or
+     *  snap-bootstrap
+     */
+    char recovery_system_status[SNAP_NAME_MAX_LEN];
+
+    /** device_lock_state contains the lock state of the device. It is used by the
+     * bootloader to track device lock changes. When lock state changes, device goes
+     * automatically to install mode. This entry is completely transparent
+     * to the snapd and is only modified by bootloader.
+     * Only last char in the aray is used (device_lock_state[0])
+     * Permitted values:
+     *  0: DEVICE_STATE_UNKNOW:   initial value at first boot.
+     *          This is changed by the bootloader to reflect actual device state.
+     *  1: DEVICE_STATE_UNLOCKED: unlocked device
+     *  2: DEVICE_STATE_LOCKED:   locked device
+     */
+    char device_lock_state[SNAP_NAME_MAX_LEN];
+
     /* unused placeholders for additional parameters to be used  in the future */
     char unused_key_01[SNAP_NAME_MAX_LEN];
     char unused_key_02[SNAP_NAME_MAX_LEN];
@@ -214,9 +245,6 @@ typedef struct SNAP_RECOVERY_BOOT_SELECTION {
     char unused_key_15[SNAP_NAME_MAX_LEN];
     char unused_key_16[SNAP_NAME_MAX_LEN];
     char unused_key_17[SNAP_NAME_MAX_LEN];
-    char unused_key_18[SNAP_NAME_MAX_LEN];
-    char unused_key_19[SNAP_NAME_MAX_LEN];
-    char unused_key_20[SNAP_NAME_MAX_LEN];
 
     /* unused array of 10 key - value pairs */
     char key_value_pairs[10][2][SNAP_NAME_MAX_LEN];
