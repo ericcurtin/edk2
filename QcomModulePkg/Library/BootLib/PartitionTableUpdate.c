@@ -895,6 +895,8 @@ PatchGpt (UINT8 *Gpt,
   UINT8 *PartitionEntryArrStart;
   UINT32 CrcVal;
   EFI_STATUS Status;
+  UINT32 PtnEntryBlks = (MAX_PARTITION_ENTRIES_SZ / BlkSz) + GPT_HDR_BLOCKS;
+  EFI_PARTITION_ENTRY *PartEntry = 0;
 
   NumSectors = DeviceDensity / BlkSz;
 
@@ -904,16 +906,16 @@ PatchGpt (UINT8 *Gpt,
   PUT_LONG_LONG (PrimaryGptHeader + BACKUP_HEADER_OFFSET,
                  (UINT64) (NumSectors - 1));
   PUT_LONG_LONG (PrimaryGptHeader + LAST_USABLE_LBA_OFFSET,
-                 (UINT64) (NumSectors - 34));
+                 (UINT64) (NumSectors - (PtnEntryBlks + 1)));
 
   /* Patch Backup GPT */
   Offset = (2 * PartEntryArrSz);
   SecondaryGptHeader = Offset + BlkSz + PrimaryGptHeader;
   PUT_LONG_LONG (SecondaryGptHeader + PRIMARY_HEADER_OFFSET, (UINT64)1);
   PUT_LONG_LONG (SecondaryGptHeader + LAST_USABLE_LBA_OFFSET,
-                 (UINT64) (NumSectors - 34));
+                 (UINT64) (NumSectors - (PtnEntryBlks + 1)));
   PUT_LONG_LONG (SecondaryGptHeader + PARTITION_ENTRIES_OFFSET,
-                 (UINT64) (NumSectors - 33));
+                 (UINT64) (NumSectors - (PtnEntryBlks)));
 
   /* Patch the last partition */
   LastPartitionEntry = (UINT64 *)
@@ -926,15 +928,20 @@ PatchGpt (UINT8 *Gpt,
     TotalPart++;
     LastPartitionEntry = (UINT64 *)
       (PrimaryGptHeader + BlkSz + TotalPart * PARTITION_ENTRY_SIZE);
+    PartEntry = (EFI_PARTITION_ENTRY *)LastPartitionEntry;
   }
 
   LastPartOffset =
       (TotalPart - 1) * PARTITION_ENTRY_SIZE + PARTITION_ENTRY_LAST_LBA;
 
-  PUT_LONG_LONG (PrimaryGptHeader + BlkSz + LastPartOffset,
-                 (UINT64) (NumSectors - 34));
+  if (StrnCmp (PartEntry->PartitionName, (CONST CHAR16 *)L"last_parti",
+    StrLen ((CONST CHAR16 *)L"last_parti")) != 0) {
+    PUT_LONG_LONG (PrimaryGptHeader + BlkSz + LastPartOffset,
+                   (UINT64) (NumSectors - (PtnEntryBlks + 1)));
+  }
+
   PUT_LONG_LONG (PrimaryGptHeader + BlkSz + LastPartOffset + PartEntryArrSz,
-                 (UINT64) (NumSectors - 34));
+                 (UINT64) (NumSectors - (PtnEntryBlks + 1)));
 
   /* Update CRC of the partition entry array for both headers */
   PartitionEntryArrStart = PrimaryGptHeader + BlkSz;
