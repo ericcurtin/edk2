@@ -133,7 +133,7 @@ EFI_STATUS SnapGetTargetBootParams(CHAR16 *BootPart,
                            recovery_mode ));
         AsciiSPrint(cmdline_buf,
                     sizeof(cmdline_buf),
-                    " snapd_recovery_mode=%a snapd_recovery_system=%a%a dangerous snapd_lk_boot_disk=sde",
+                    " snapd_recovery_mode=%a snapd_recovery_system=%a%a snapd_lk_boot_disk=sde",
                     recovery_mode,
                     RecoverySelect->snapd_recovery_system,
                     dangerous
@@ -153,7 +153,7 @@ EFI_STATUS SnapGetTargetBootParams(CHAR16 *BootPart,
 
     AsciiSPrint(cmdline_buf,
                 sizeof(cmdline_buf),
-                " snapd_recovery_mode=%a%a dangerous snapd_lk_boot_disk=sde",
+                " snapd_recovery_mode=%a%a snapd_lk_boot_disk=sde",
                 recovery_mode,
                 dangerous
               );
