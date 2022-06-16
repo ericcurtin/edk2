@@ -1752,6 +1752,7 @@ BOOLEAN IsTargetUbuntuCore (VOID)
   return TRUE;
 }
 #else
+BOOLEAN IsTargetUbuntuCore (VOID)
 {
   return FALSE;
 }
