@@ -2,7 +2,7 @@
 SECTOOLS=${SECTOOLS_V2}
 SECTOOLS_SECURITY_PROFILE=${SECTOOLS_SECURITY_PROFILE_V2[@]}
 
-SECABL_ARGS=("secure-image" "${ABL_OUT_DIR}/unsigned_abl.elf")
+SECABL_ARGS=("secure-image" "${ABL_OUT_DIR}/abl.elf")
 SECABL_ARGS+=("--outfile" "${ABL_IMAGE_DIR}/${ABL_IMAGE_NAME}")
 EXTRA_SECABL_ARGS=("--image-id" "ABL")
 EXTRA_SECABL_ARGS+=("--security-profile")

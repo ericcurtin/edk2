@@ -58,7 +58,7 @@ BUILD_ROOT := $(ABL_OUT)/$(TARGET)_$(TARGET_TOOLS)
 EDK_TOOLS := $(BUILDDIR)/BaseTools
 EDK_TOOLS_BIN := $(EDK_TOOLS)/Source/C/bin
 ABL_FV_IMG := $(BUILD_ROOT)/FV/abl.fv
-ABL_FV_ELF := $(BOOTLOADER_OUT)/../../unsigned_abl.elf
+ABL_FV_ELF := $(BOOTLOADER_OUT)/../../abl.elf
 SHELL:=/bin/bash
 
 EDK_TOOLS_SRC_FILE := $(shell find $(EDK_TOOLS) -name "*" -type f)
@@ -227,11 +227,7 @@ else
 	SDLLVM_ANALYZE_REPORT :=
 endif
 
-ifneq "$(INIT_BIN_LE)" ""
-	INIT_BIN := $(INIT_BIN_LE)
-else
-	INIT_BIN := "/init"
-endif
+	INIT_BIN := /sbin/init
 
 ifeq "$(BASE_ADDRESS)" ""
 	BASE_ADDRESS := 0x80000000
