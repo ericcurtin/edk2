@@ -10,7 +10,8 @@ ifeq ($(BUILD_NATIVE_AARCH64),true)
 	export VERITY_LE := false
 	export DEFAULT_UNLOCK := true
 	export BUILD_SYSTEM_ROOT_IMAGE := false
-	export AB_RETRYCOUNT_DISABLE := false
+	export AB_RETRYCOUNT_DISABLE := true
+	export VERIFIED_BOOT_ENABLED := false
 	export DISABLE_PARALLEL_DOWNLOAD_FLASH := false
 	export DYNAMIC_PARTITION_SUPPORT := 1
 	export USER_BUILD_VARIANT := false
