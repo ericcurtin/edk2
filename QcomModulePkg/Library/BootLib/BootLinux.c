@@ -88,6 +88,7 @@
 
 STATIC QCOM_SCM_MODE_SWITCH_PROTOCOL *pQcomScmModeSwitchProtocol = NULL;
 STATIC BOOLEAN BootDevImage;
+STATIC BOOLEAN BootOSTreeImage;
 STATIC BOOLEAN RecoveryHasNoKernel = FALSE;
 
 STATIC VOID
@@ -1363,7 +1364,9 @@ BootLinux (BootInfo *Info)
       (EFI_D_VERBOSE, "Device Tree Load Address: 0x%x\n",
                              BootParamlistPtr.DeviceTreeLoadAddr));
 
-  if (AsciiStrStr (BootParamlistPtr.CmdLine, "root=")) {
+  if (AsciiStrStr (BootParamlistPtr.CmdLine, "ostree=")) {
+    BootOSTreeImage = TRUE;
+  } else if (AsciiStrStr (BootParamlistPtr.CmdLine, "root=")) {
     BootDevImage = TRUE;
   }
 
@@ -1990,6 +1993,23 @@ SetBootDevImage (VOID)
 BOOLEAN IsBootDevImage (VOID)
 {
   return BootDevImage;
+}
+
+VOID
+ResetBootOSTreeImage (VOID)
+{
+  BootOSTreeImage = FALSE;
+}
+
+VOID
+SetBootOSTreeImage (VOID)
+{
+  BootOSTreeImage = TRUE;
+}
+
+BOOLEAN IsBootOSTreeImage (VOID)
+{
+  return BootOSTreeImage;
 }
 
 #ifdef AB_RETRYCOUNT_DISABLE

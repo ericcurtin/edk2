@@ -285,6 +285,9 @@ LoadAndValidateDtboImg (BootInfo *Info,
 VOID SetBootDevImage (VOID);
 VOID ResetBootDevImage (VOID);
 BOOLEAN IsBootDevImage (VOID);
+VOID ResetBootOSTreeImage (VOID);
+VOID SetBootOSTreeImage (VOID);
+BOOLEAN IsBootOSTreeImage (VOID);
 BOOLEAN IsABRetryCountDisabled (VOID);
 BOOLEAN IsDynamicPartitionSupport (VOID);
 UINT64 SetandGetLoadAddr (BootParamlist *BootParamlistPtr, AddrType Type);

@@ -499,6 +499,11 @@ GetSystemPath (CHAR8 **SysPath, BOOLEAN MultiSlotBoot, BOOLEAN BootIntoRecovery,
           " rootfstype=ubifs rootflags=bulk_read root=ubi0:rootfs ubi.mtd=%d",
           (Index - 1));
     }
+  } else if (IsBootOSTreeImage()) {
+    DEBUG ((EFI_D_VERBOSE, "System Path is defined by boot image\n", *SysPath));
+    FreePool (*SysPath);
+    *SysPath = NULL;
+    return 0;
   } else if (!AsciiStrCmp ("UFS", RootDevStr)) {
     AsciiSPrint (*SysPath, MAX_PATH_SIZE, " %a=/dev/sd%c%d",
                  Key,

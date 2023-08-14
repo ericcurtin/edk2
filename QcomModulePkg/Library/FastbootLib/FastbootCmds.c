@@ -2898,10 +2898,12 @@ CmdBoot (CONST CHAR8 *Arg, VOID *Data, UINT32 Size)
   FastbootOkay ("");
   FastbootUsbDeviceStop ();
   ResetBootDevImage ();
+  ResetBootOSTreeImage();
   BootLinux (&Info);
 
 out:
   ResetBootDevImage ();
+  ResetBootOSTreeImage();
   return;
 }
 #endif
