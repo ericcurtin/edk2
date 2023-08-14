@@ -50,6 +50,7 @@
 
 STATIC QCOM_SCM_MODE_SWITCH_PROTOCOL *pQcomScmModeSwitchProtocol = NULL;
 STATIC BOOLEAN BootDevImage;
+STATIC BOOLEAN BootOSTreeImage;
 STATIC BOOLEAN IsVmComputed = FALSE;
 
 STATIC VOID
@@ -1194,7 +1195,9 @@ skip_FfbmStr:
     BootParamlistPtr.CmdLine[BOOT_ARGS_SIZE - 1] = '\0';
   }
 
-  if (AsciiStrStr (BootParamlistPtr.CmdLine, "root=")) {
+  if (AsciiStrStr (BootParamlistPtr.CmdLine, "ostree=")) {
+    BootOSTreeImage = TRUE;
+  } else if (AsciiStrStr (BootParamlistPtr.CmdLine, "root=")) {
     BootDevImage = TRUE;
   }
 
@@ -1684,6 +1687,23 @@ SetBootDevImage (VOID)
 BOOLEAN IsBootDevImage (VOID)
 {
   return BootDevImage;
+}
+
+VOID
+ResetBootOSTreeImage (VOID)
+{
+  BootOSTreeImage = FALSE;
+}
+
+VOID
+SetBootOSTreeImage (VOID)
+{
+  BootOSTreeImage = TRUE;
+}
+
+BOOLEAN IsBootOSTreeImage (VOID)
+{
+  return BootOSTreeImage;
 }
 
 #ifdef AB_RETRYCOUNT_DISABLE
